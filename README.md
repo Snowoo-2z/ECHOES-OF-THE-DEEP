@@ -1,5 +1,5 @@
-🌊 ECHOES OF THE DEEP (Les Échos des Profondeurs)
-🎯 Le pitch en une phrase
+**🌊 ECHOES OF THE DEEP (Les Échos des Profondeurs)**
+
 
 Un jeu d'aventure/exploration 3D où tu incarnes un scaphandrier-cartographe dans un monde où l'océan est monté de 300 mètres, engloutissant l'ancienne civilisation... la nôtre.
 📖 L'histoire
