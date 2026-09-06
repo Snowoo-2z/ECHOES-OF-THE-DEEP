@@ -15,7 +15,7 @@
 **Année 2247.** Suite à un cataclysme climatique appelé **"La Grande Montée"**, l'humanité survit sur des cités flottantes et des archipels formés par les anciens sommets de montagnes. Les villes d'autrefois reposent maintenant sous les vagues, englouties et oubliées.
 
 ### 👤 Le personnage
-Tu incarnes **Naïa** (ou **Kael**, au choix du joueur), un(e) jeune **"Plongeur d'Échos"** : des explorateurs qui descendent dans les ruines englouties pour récupérer des technologies perdues et des **"Échos"** — des fragments de mémoire du monde d'avant.
+Tu incarnes un garçon pour le moment aucun prénom choisi, un(e) jeune **"Plongeur d'Échos"** : des explorateurs qui descendent dans les ruines englouties pour récupérer des technologies perdues et des **"Échos"** — des fragments de mémoire du monde d'avant.
 
 ### 🔮 Le twist
 En explorant, tu découvres que **La Grande Montée n'était peut-être pas naturelle**... et qu'une **entité dort au fond de la fosse la plus profonde**. Les Échos que tu collectes racontent, morceau par morceau, la véritable histoire.
