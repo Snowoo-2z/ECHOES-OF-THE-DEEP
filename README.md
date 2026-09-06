@@ -85,11 +85,7 @@ Mélange de **mélancolie** et d'**émerveillement** (pense *Subnautica* rencont
 
 ---
 
-## 📝 Contributeurs
 
-- **Créateur** : Snowoo-2z
-
----
 
 ## 📄 License
 
