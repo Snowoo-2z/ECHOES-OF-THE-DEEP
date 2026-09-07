@@ -107,6 +107,14 @@
   #start .alt:hover { opacity:.9; }
   #loading { font-size:11px; letter-spacing:4px; opacity:.5; text-transform:uppercase; }
 
+  #errbox {
+    position:fixed; inset:auto 5vw 5vh 5vw; z-index:60; display:none;
+    background:#2a0f10; border:1px solid #a33; border-radius:4px;
+    padding:18px 22px; font-size:12px; line-height:1.7; color:#ffc9c9;
+    font-family:ui-monospace, monospace; max-height:60vh; overflow:auto;
+  }
+  #errbox b { color:#ff8080; display:block; margin-bottom:8px;
+              letter-spacing:2px; text-transform:uppercase; font-size:11px; }
   #warnbox {
     position:fixed; left:16px; top:16px; z-index:26; font-size:10px;
     letter-spacing:1px; opacity:.4; line-height:1.7; max-width:280px;
@@ -123,6 +131,7 @@
 <div id="skip">Échap passer le plan · <b>Entrée</b> tout passer</div>
 <div id="fade"></div>
 <div id="warnbox"></div>
+<div id="errbox"></div>
 
 <div id="start">
   <h1>Echoes of the Deep</h1>
@@ -135,9 +144,39 @@
 
 <script type="importmap">
 { "imports": {
-    "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
-    "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
+    "three": "./vendor/three/three.module.js",
+    "three/addons/": "./vendor/three/addons/"
 } }
+</script>
+
+<script>
+// Filet de sécurité : toute erreur de chargement s'affiche à l'écran plutôt
+// que de laisser une page noire silencieuse.
+(function () {
+  function show(msg) {
+    var el = document.getElementById('errbox');
+    if (!el) return;
+    el.style.display = 'block';
+    el.innerHTML = '<b>Erreur de chargement</b>' +
+      String(msg).replace(/&/g, '&amp;').replace(/</g, '&lt;');
+    var s = document.getElementById('start');
+    if (s) {
+      var l = document.getElementById('loading');
+      if (l) l.textContent = 'Échec du chargement — voir le message ci-dessous';
+    }
+  }
+  window.addEventListener('error', function (e) {
+    if (e.target && (e.target.tagName === 'SCRIPT' || e.target.tagName === 'LINK')) {
+      show('Impossible de charger : ' + (e.target.src || e.target.href));
+    } else {
+      show((e.message || 'erreur inconnue') + '\n' + (e.filename || '') + ':' + (e.lineno || ''));
+    }
+  }, true);
+  window.addEventListener('unhandledrejection', function (e) {
+    show('Promesse rejetée : ' + (e.reason && e.reason.message ? e.reason.message : e.reason));
+  });
+  window.__showError = show;
+})();
 </script>
 
 <script type="module">
@@ -227,6 +266,7 @@ const ctx = {
 let intro = null, follow = null, mode = 'idle';
 
 (async () => {
+  try {
   intro = await buildIntro(ctx);
   player.load(intro.shots);
 
@@ -267,6 +307,10 @@ let intro = null, follow = null, mode = 'idle';
     renderer.domElement.requestPointerLock();
     setTimeout(() => hintEl.classList.remove('on'), 9000);
   };
+  } catch (err) {
+    console.error(err);
+    if (window.__showError) window.__showError(err && err.stack ? err.stack : err);
+  }
 })();
 
 // ------------------------------------------------------------- CONTRÔLES

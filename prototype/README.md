@@ -177,3 +177,19 @@ bonnes tailles. Voir `models/README.md` pour la liste et les conventions.
 - Intérieurs de bâtiments, poches d'air
 - Base flottante et upgrades du scaphandre
 - Sons : ambiance, respiration, craquements du métal
+
+## 📦 Three.js en local (`vendor/`)
+
+Three.js et le GLTFLoader sont **vendus dans le dépôt** (`prototype/vendor/`,
+1,4 Mo) plutôt que chargés depuis un CDN : unpkg n'est pas joignable depuis
+tous les réseaux, ce qui laissait une page noire silencieuse.
+
+Le prototype fonctionne donc **entièrement hors ligne**.
+
+Pour mettre à jour Three.js, remplacer les trois fichiers de
+`prototype/vendor/three/` par ceux d'une nouvelle version.
+
+## 🚨 Affichage des erreurs
+
+Toute erreur de chargement s'affiche désormais dans un encadré rouge en bas de
+l'écran, au lieu de laisser une page noire sans explication.
