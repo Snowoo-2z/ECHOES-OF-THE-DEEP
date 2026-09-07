@@ -129,8 +129,8 @@ export function poseSit(p, t, v = 0) {
   // Flexions volontairement modérées : au-delà d'environ 60° le skinning
   // linéaire pince la maille à la hanche et au genou. On compense en
   // inclinant le bassin, ce qui donne la même lecture visuelle.
-  p.hips[0]   = -0.52;
-  p.thighL[0] = -0.62;
+  p.hips[0]   =  0.16;        // très léger buste en avant (>0 = vers l'avant)
+  p.thighL[0] = -0.62;        // cuisses relevées vers l'avant
   p.thighR[0] = -0.58;
   p.thighL[2] =  0.08;
   p.thighR[2] = -0.08;
@@ -144,11 +144,11 @@ export function poseSit(p, t, v = 0) {
   p.neck[0]  = -0.06;
   p.head[1]  = s * 0.06;
 
-  // avant-bras posés sur les cuisses
+  // avant-bras posés sur les cuisses ([0] < 0 amène les mains devant)
   p.shoulderL[2] =  ARM_DOWN - 0.30;
   p.shoulderR[2] = -ARM_DOWN + 0.30;
-  p.shoulderL[0] =  0.44;
-  p.shoulderR[0] =  0.44;
+  p.shoulderL[0] = -0.44;
+  p.shoulderR[0] = -0.44;
   p.elbowL[1] = -0.86;
   p.elbowR[1] =  0.86;
   p.elbowL[0] =  0.30;
@@ -161,7 +161,7 @@ export function poseCrouchWork(p, t, v = 0) {
   const w2 = Math.sin(t * 1.4 + v * 2.2);
 
   // Même contrainte que poseSit : on reste sous ~60° par articulation.
-  p.hips[0]   = -0.18;
+  p.hips[0]   =  0.22;        // accroupi, buste penché en avant
   p.thighL[0] = -0.58;
   p.thighR[0] = -0.54;
   p.thighL[2] =  0.20;
@@ -179,8 +179,8 @@ export function poseCrouchWork(p, t, v = 0) {
   // mains qui travaillent devant soi
   p.shoulderL[2] =  ARM_DOWN - 0.42;
   p.shoulderR[2] = -ARM_DOWN + 0.42;
-  p.shoulderL[0] =  0.78 + w * 0.10;
-  p.shoulderR[0] =  0.78 - w * 0.10;
+  p.shoulderL[0] = -0.78 + w * 0.10;
+  p.shoulderR[0] = -0.78 - w * 0.10;
   p.elbowL[1] = -1.16 - w2 * 0.14;
   p.elbowR[1] =  1.16 + w2 * 0.14;
   p.handL[0] = w * 0.30;
@@ -196,8 +196,8 @@ export function poseWorkStanding(p, t, v = 0) {
 
   p.shoulderL[2] =  ARM_DOWN - 0.46;
   p.shoulderR[2] = -ARM_DOWN + 0.46;
-  p.shoulderL[0] =  0.66 + w * 0.13;
-  p.shoulderR[0] =  0.66 - w * 0.13;
+  p.shoulderL[0] = -0.66 + w * 0.13;
+  p.shoulderR[0] = -0.66 - w * 0.13;
   p.elbowL[1] = -1.02 - w2 * 0.18;
   p.elbowR[1] =  1.02 + w2 * 0.18;
   p.elbowL[0] =  0.14;
@@ -218,8 +218,8 @@ export function poseCarry(p, t, v = 0) {
   // bras tendus vers le bas, épaules tirées
   p.shoulderL[2] =  ARM_DOWN + 0.10;
   p.shoulderR[2] = -ARM_DOWN - 0.10;
-  p.shoulderL[0] =  0.04;
-  p.shoulderR[0] =  0.04;
+  p.shoulderL[0] = -0.04;
+  p.shoulderR[0] = -0.04;
   p.elbowL[1] = -0.06;
   p.elbowR[1] =  0.06;
   p.spine[0] += 0.10;
@@ -235,8 +235,8 @@ export function poseOffer(p, t, v = 0) {
 
   p.shoulderL[2] =  ARM_DOWN - 0.58;
   p.shoulderR[2] = -ARM_DOWN + 0.58;
-  p.shoulderL[0] =  0.92 + b * 0.03;
-  p.shoulderR[0] =  0.92 - b * 0.03;
+  p.shoulderL[0] = -0.92 + b * 0.03;
+  p.shoulderR[0] = -0.92 - b * 0.03;
   p.elbowL[1] = -0.52;
   p.elbowR[1] =  0.52;
   p.elbowL[0] =  0.18;
@@ -253,7 +253,7 @@ export function poseTalk(p, t, v = 0, intensity = 1) {
   const k = intensity;
 
   p.shoulderR[2] = -ARM_DOWN + (0.34 + g * 0.16) * k;
-  p.shoulderR[0] =  (0.42 + g2 * 0.16) * k;
+  p.shoulderR[0] = -(0.42 + g2 * 0.16) * k;
   p.elbowR[1]    =  (0.92 + g * 0.24) * k;
   p.elbowR[0]    =  0.16 * k;
   p.handR[0]     =  g * 0.20 * k;
@@ -272,8 +272,8 @@ export function poseRemoveHelmet(p, t, phase) {
 
   p.shoulderL[2] =  ARM_DOWN - 0.34 - up * 0.78;
   p.shoulderR[2] = -ARM_DOWN + 0.34 + up * 0.78;
-  p.shoulderL[0] =  0.20 + up * 0.36;
-  p.shoulderR[0] =  0.20 + up * 0.36;
+  p.shoulderL[0] = -0.20 - up * 0.36;
+  p.shoulderR[0] = -0.20 - up * 0.36;
   p.elbowL[1] = -0.40 - up * 1.32;
   p.elbowR[1] =  0.40 + up * 1.32;
 
