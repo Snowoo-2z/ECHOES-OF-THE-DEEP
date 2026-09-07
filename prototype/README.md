@@ -11,8 +11,10 @@ python3 -m http.server 3000 --directory prototype
 
 | Page | Contenu |
 |---|---|
-| `http://localhost:3000/intro.html` | **Cinématique d'introduction** + segment jouable au village |
-| `http://localhost:3000/` | Bac à sable de plongée (nage sous-marine) |
+| `http://localhost:3000/` | **Cinématique d'introduction** + segment jouable au village |
+| `http://localhost:3000/dive.html` | Bac à sable de plongée (nage sous-marine) |
+
+Les deux pages sont reliées par un lien sur leur écran de démarrage.
 
 Aucune installation : Three.js est chargé depuis un CDN (connexion requise).
 Le modèle fait 12 Mo, comptez 2-3 s au premier chargement.
@@ -119,7 +121,7 @@ debout sur **+Y**, face à **+Z**. L'échelle est normalisée automatiquement
 Si le modèle a déjà un squelette et des animations, il faudra brancher
 l'`AnimationMixer` de Three.js à la place de `DiverAnimator`.
 
-## 🎬 La cinématique (`intro.html`)
+## 🎬 La cinématique (`index.html`)
 
 **Durée : 1 min 42**, 6 plans, 11 sous-titres. Puis passage au jouable.
 

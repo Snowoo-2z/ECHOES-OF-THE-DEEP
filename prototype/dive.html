@@ -1,0 +1,576 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Echoes of the Deep — Prototype v0.1</title>
+<style>
+  * { margin:0; padding:0; box-sizing:border-box; }
+  html, body { width:100%; height:100%; overflow:hidden; background:#020a12; }
+  canvas { display:block; }
+  body { font-family: "Segoe UI", system-ui, sans-serif; color:#cfe9ff; }
+
+  #hud {
+    position:fixed; inset:0; pointer-events:none;
+    padding:24px; display:flex; flex-direction:column; justify-content:space-between;
+  }
+  .top { display:flex; justify-content:space-between; align-items:flex-start; }
+  .title { font-size:13px; letter-spacing:3px; text-transform:uppercase; opacity:.55; }
+  .depth {
+    text-align:right; font-variant-numeric:tabular-nums;
+  }
+  .depth .val { font-size:38px; font-weight:200; letter-spacing:1px; }
+  .depth .lbl { font-size:11px; letter-spacing:3px; opacity:.5; text-transform:uppercase; }
+  .biome { font-size:12px; letter-spacing:2px; opacity:.7; margin-top:6px; }
+
+  .bottom { display:flex; justify-content:space-between; align-items:flex-end; gap:24px; }
+  .gauges { width:260px; }
+  .gauge { margin-bottom:12px; }
+  .gauge .row { display:flex; justify-content:space-between; font-size:10px;
+                letter-spacing:2px; text-transform:uppercase; opacity:.6; margin-bottom:5px; }
+  .bar { height:4px; background:rgba(255,255,255,.12); border-radius:2px; overflow:hidden; }
+  .fill { height:100%; width:100%; transition:width .15s linear; }
+  #o2fill    { background:linear-gradient(90deg,#3fe0d0,#7ff5ff); }
+  #lampfill  { background:linear-gradient(90deg,#f5b942,#ffe9a8); }
+
+  .anim {
+    display:flex; align-items:center; gap:8px; margin-bottom:14px;
+    font-size:11px; letter-spacing:3px; text-transform:uppercase;
+  }
+  .anim .dot { width:6px; height:6px; border-radius:50%; background:#3fe0d0;
+               box-shadow:0 0 8px #3fe0d0; transition:background .2s, box-shadow .2s; }
+  .help { font-size:11px; line-height:1.9; opacity:.45; text-align:right; }
+  .help b { color:#8fd8ff; font-weight:600; }
+
+  #warn {
+    position:fixed; top:50%; left:50%; transform:translate(-50%,-50%);
+    font-size:14px; letter-spacing:4px; text-transform:uppercase;
+    color:#ff6b6b; opacity:0; transition:opacity .3s; pointer-events:none;
+  }
+  #vignette {
+    position:fixed; inset:0; pointer-events:none;
+    box-shadow: inset 0 0 220px 40px rgba(0,10,20,.85);
+  }
+  #start {
+    position:fixed; inset:0; background:rgba(2,8,16,.92); z-index:10;
+    display:flex; flex-direction:column; align-items:center; justify-content:center;
+    gap:18px; cursor:pointer; text-align:center;
+  }
+  #start h1 { font-size:34px; font-weight:200; letter-spacing:10px; text-transform:uppercase; }
+  #start p  { font-size:12px; letter-spacing:3px; opacity:.5; text-transform:uppercase; }
+  #start .alt {
+    margin-top:26px; font-size:10px; letter-spacing:3px; text-transform:uppercase;
+    color:#8fd8ff; opacity:.4; text-decoration:none;
+  }
+  #start .alt:hover { opacity:.9; }
+  #start .go { margin-top:20px; font-size:12px; letter-spacing:4px; padding:12px 28px;
+               border:1px solid rgba(143,216,255,.4); border-radius:2px; }
+</style>
+</head>
+<body>
+
+<div id="hud">
+  <div class="top">
+    <div class="title">Echoes of the Deep · prototype 0.1</div>
+    <div class="depth">
+      <div class="val"><span id="depth">0</span> m</div>
+      <div class="lbl">Profondeur</div>
+      <div class="biome" id="biome">Surface</div>
+    </div>
+  </div>
+  <div class="bottom">
+    <div class="gauges">
+      <div class="anim" id="animstate"><span class="dot"></span><span id="animlbl">IDLE</span></div>
+      <div class="gauge">
+        <div class="row"><span>Oxygène</span><span id="o2txt">100%</span></div>
+        <div class="bar"><div class="fill" id="o2fill"></div></div>
+      </div>
+      <div class="gauge">
+        <div class="row"><span>Lampe</span><span id="lamptxt">100%</span></div>
+        <div class="bar"><div class="fill" id="lampfill"></div></div>
+      </div>
+    </div>
+    <div class="help">
+      <b>Z Q S D</b> / flèches — nager<br>
+      <b>Espace</b> monter · <b>Maj</b> descendre<br>
+      <b>Souris</b> regarder · <b>F</b> lampe · <b>Échap</b> pause<br>
+      <b>H</b> masquer l'état d'animation
+    </div>
+  </div>
+</div>
+
+<div id="warn">Oxygène critique — remonte</div>
+<div id="vignette"></div>
+
+<div id="start">
+  <h1>Echoes of the Deep</h1>
+  <p>Prototype de déplacement</p>
+  <div class="go">Cliquer pour plonger</div>
+  <a class="alt" href="index.html">← Cinématique d'introduction</a>
+</div>
+
+<script type="importmap">
+{ "imports": {
+    "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+    "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
+} }
+</script>
+
+<script type="module">
+import * as THREE from 'three';
+import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+import { autoRig } from './rig.js';
+import { DiverAnimator } from './animation.js';
+
+// ---------------------------------------------------------------- SCÈNE
+const scene = new THREE.Scene();
+const FOG_NEAR = 0x0a2b3d;
+scene.fog = new THREE.FogExp2(FOG_NEAR, 0.028);
+scene.background = new THREE.Color(FOG_NEAR);
+
+const camera = new THREE.PerspectiveCamera(70, innerWidth/innerHeight, 0.1, 400);
+const renderer = new THREE.WebGLRenderer({ antialias:true });
+renderer.setSize(innerWidth, innerHeight);
+renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+document.body.appendChild(renderer.domElement);
+
+// ---------------------------------------------------------------- LUMIÈRES
+const ambient = new THREE.AmbientLight(0x4a8ab5, 0.55);
+scene.add(ambient);
+
+const sun = new THREE.DirectionalLight(0x9fd8ff, 0.9);
+sun.position.set(20, 60, 10);
+scene.add(sun);
+
+// lampe frontale du plongeur
+const lamp = new THREE.SpotLight(0xffeec2, 3.2, 55, Math.PI/7, 0.55, 1.2);
+const lampTarget = new THREE.Object3D();
+scene.add(lamp, lampTarget);
+lamp.target = lampTarget;
+
+// ---------------------------------------------------------------- LE PLONGEUR
+const diver = new THREE.Group();
+diver.position.set(0, -4, 0);
+scene.add(diver);
+
+// Loupiote du casque (repositionnée sur l'ancrage une fois le modèle chargé)
+const bulb = new THREE.Mesh(new THREE.SphereGeometry(0.055, 8, 8),
+             new THREE.MeshBasicMaterial({ color:0xffeec2 }));
+bulb.position.set(0, 0.85, 0.2);
+diver.add(bulb);
+
+// Placeholder discret le temps du chargement
+const loadingMesh = new THREE.Mesh(
+  new THREE.CapsuleGeometry(0.34, 0.9, 6, 12),
+  new THREE.MeshStandardMaterial({ color:0x2d6a7a, roughness:.8, transparent:true, opacity:.4 })
+);
+diver.add(loadingMesh);
+
+let bones = null, attach = null, modelReady = false, animator = null;
+const TARGET_HEIGHT = 1.85;   // mètres
+
+new GLTFLoader().load('models/diver.glb', (gltf) => {
+  let mesh = null;
+  gltf.scene.traverse(o => { if (o.isMesh && !mesh) mesh = o; });
+  if (!mesh) { console.error('Aucun mesh dans le GLB'); return; }
+
+  mesh.updateWorldMatrix(true, false);
+  mesh.geometry.applyMatrix4(mesh.matrixWorld);   // fige les transforms du GLB
+
+  // Le matériau Meshy est doubleSided : on garde, mais on adoucit le métal
+  const mat = mesh.material;
+  mat.side = THREE.FrontSide;
+  mat.roughness = Math.min(1, (mat.roughness ?? 1) * 1.0);
+  mat.envMapIntensity = 0.6;
+
+  const rig = autoRig(mesh);
+  bones = rig.bones;
+  attach = rig.attach;
+
+  // Mise à l'échelle + recentrage : pieds à -0.9, centre du corps à l'origine
+  const s = TARGET_HEIGHT / rig.height;
+  rig.skinned.scale.setScalar(s);
+  rig.skinned.position.y = -(rig.yMin + rig.height * 0.5) * s;
+
+  animator = new DiverAnimator(bones);
+  animator.applyRest();
+
+  diver.remove(loadingMesh);
+  loadingMesh.geometry.dispose();
+  loadingMesh.material.dispose();
+  diver.add(rig.skinned);
+
+  // La loupiote se cale sur l'ancrage du casque
+  diver.remove(bulb);
+  attach.helmet.add(bulb);
+  bulb.position.set(0, 0, 0);
+  bulb.scale.setScalar(1 / s);
+
+  modelReady = true;
+  console.log(`Plongeur riggé : ${Object.keys(bones).length} os, ` +
+              `${(mesh.geometry.attributes.position.count/1000).toFixed(0)}k sommets`);
+},
+undefined,
+(err) => console.error('Échec du chargement du modèle :', err));
+
+// ---------------------------------------------------------------- FOND MARIN
+const FLOOR_Y = -120;
+const floorGeo = new THREE.PlaneGeometry(600, 600, 90, 90);
+const pos = floorGeo.attributes.position;
+for (let i = 0; i < pos.count; i++) {
+  const x = pos.getX(i), y = pos.getY(i);
+  pos.setZ(i, Math.sin(x*0.05)*3 + Math.cos(y*0.045)*3.4 + Math.sin((x+y)*0.017)*6);
+}
+floorGeo.computeVertexNormals();
+const floor = new THREE.Mesh(floorGeo,
+  new THREE.MeshStandardMaterial({ color:0x123243, roughness:1, flatShading:true }));
+floor.rotation.x = -Math.PI/2; floor.position.y = FLOOR_Y;
+scene.add(floor);
+
+// surface de l'eau (vue du dessous)
+const surface = new THREE.Mesh(
+  new THREE.PlaneGeometry(600, 600, 1, 1),
+  new THREE.MeshBasicMaterial({ color:0x6fd4ff, transparent:true, opacity:.22, side:THREE.DoubleSide })
+);
+surface.rotation.x = -Math.PI/2; surface.position.y = 0.5;
+scene.add(surface);
+
+// ---------------------------------------------------------------- RUINES
+const concrete = new THREE.MeshStandardMaterial({ color:0x2b4a55, roughness:.95, flatShading:true });
+const coral    = new THREE.MeshStandardMaterial({ color:0x2e6b60, roughness:.9 });
+const windowMat= new THREE.MeshBasicMaterial({ color:0x1a3b4a });
+
+const colliders = [];
+function building(x, z, w, h, d) {
+  const g = new THREE.Group();
+  const base = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), concrete);
+  g.add(base);
+  // bandeaux de fenêtres
+  const floors = Math.floor(h / 6);
+  for (let i = 1; i < floors; i++) {
+    const band = new THREE.Mesh(new THREE.BoxGeometry(w*1.005, 1.2, d*1.005), windowMat);
+    band.position.y = -h/2 + i*6;
+    g.add(band);
+  }
+  // coraux sur le toit
+  for (let i = 0; i < 4; i++) {
+    const c = new THREE.Mesh(new THREE.IcosahedronGeometry(0.8 + Math.random()*1.4, 0), coral);
+    c.position.set((Math.random()-.5)*w, h/2, (Math.random()-.5)*d);
+    g.add(c);
+  }
+  g.position.set(x, FLOOR_Y + h/2, z);
+  g.rotation.y = (Math.random()-.5) * 0.3;
+  scene.add(g);
+  colliders.push({ x, z, r: Math.max(w,d)*0.62, top: FLOOR_Y + h });
+  return g;
+}
+
+// une petite skyline engloutie
+const rng = (s => () => (s = s*16807 % 2147483647) / 2147483647)(42);
+for (let i = 0; i < 34; i++) {
+  const a = rng() * Math.PI * 2;
+  const r = 22 + rng() * 130;
+  const h = 30 + rng() * 95;
+  const w = 8 + rng() * 12;
+  building(Math.cos(a)*r, Math.sin(a)*r, w, h, w * (0.7 + rng()*0.6));
+}
+
+// ---------------------------------------------------------------- PARTICULES (neige marine)
+const PCOUNT = 2200;
+const parr = new Float32Array(PCOUNT * 3);
+for (let i = 0; i < PCOUNT; i++) {
+  parr[i*3+0] = (Math.random()-.5) * 90;
+  parr[i*3+1] = (Math.random()-.5) * 90;
+  parr[i*3+2] = (Math.random()-.5) * 90;
+}
+const pgeo = new THREE.BufferGeometry();
+pgeo.setAttribute('position', new THREE.BufferAttribute(parr, 3));
+const particles = new THREE.Points(pgeo,
+  new THREE.PointsMaterial({ color:0xbfe6ff, size:0.12, transparent:true, opacity:.55,
+                             depthWrite:false }));
+scene.add(particles);
+
+// bulles laissées par le plongeur
+const BUB = 120;
+const bubArr = new Float32Array(BUB*3);
+const bubVel = [];
+for (let i=0;i<BUB;i++){ bubArr[i*3+1] = 9999; bubVel.push(0); }
+const bubGeo = new THREE.BufferGeometry();
+bubGeo.setAttribute('position', new THREE.BufferAttribute(bubArr,3));
+const bubbles = new THREE.Points(bubGeo,
+  new THREE.PointsMaterial({ color:0xdff6ff, size:0.16, transparent:true, opacity:.7, depthWrite:false }));
+scene.add(bubbles);
+let bubIdx = 0, bubTimer = 0;
+
+// ---------------------------------------------------------------- ENTRÉES
+const keys = {};
+let locked = false, yaw = 0, pitch = -0.12;
+
+addEventListener('keydown', e => {
+  keys[e.code] = true;
+  if (e.code === 'KeyF') lampOn = !lampOn;
+  if (e.code === 'KeyH') {
+    const el = document.getElementById('animstate');
+    el.style.display = el.style.display === 'none' ? 'flex' : 'none';
+  }
+  if (e.code === 'Space') e.preventDefault();
+});
+addEventListener('keyup', e => keys[e.code] = false);
+
+const startEl = document.getElementById('start');
+startEl.addEventListener('click', () => renderer.domElement.requestPointerLock());
+renderer.domElement.addEventListener('click', () => {
+  if (!locked) renderer.domElement.requestPointerLock();
+});
+document.addEventListener('pointerlockchange', () => {
+  locked = document.pointerLockElement === renderer.domElement;
+  startEl.style.display = locked ? 'none' : 'flex';
+  if (!locked) startEl.querySelector('.go').textContent = 'Cliquer pour reprendre';
+});
+addEventListener('mousemove', e => {
+  if (!locked) return;
+  const dyaw = -e.movementX * 0.0022;
+  yaw += dyaw;
+  yawDelta += dyaw;
+  pitch -= e.movementY * 0.0019;
+  pitch = Math.max(-1.35, Math.min(1.35, pitch));
+});
+
+// ---------------------------------------------------------------- ÉTAT
+const STATE_COLORS = {
+  IDLE:'#7fb4d0', CRUISE:'#3fe0d0', SPRINT:'#ffd166',
+  ASCEND:'#8affc1', DESCEND:'#9fb8ff', BRAKE:'#ff8f6b', BACK:'#c9a0ff',
+};
+let lastShownState = '';
+let vel = new THREE.Vector3();
+let yawRate = 0, yawDelta = 0;
+let o2 = 100, lampCharge = 100, lampOn = true;
+let swimPhase = 0;
+
+const BIOMES = [
+  { d:  0, n:'Surface' },
+  { d: 12, n:'Quartiers résidentiels' },
+  { d: 45, n:'Gratte-ciels' },
+  { d: 85, n:'Métro' },
+  { d:110, n:'Bunkers' },
+];
+function biomeFor(d) {
+  let b = BIOMES[0];
+  for (const x of BIOMES) if (d >= x.d) b = x;
+  return b.n;
+}
+
+// ---------------------------------------------------------------- BOUCLE
+const clock = new THREE.Clock();
+const fwd = new THREE.Vector3(), right = new THREE.Vector3(), up = new THREE.Vector3(0,1,0);
+const camOffset = new THREE.Vector3();
+const camLook = new THREE.Vector3(0, -4, 0);
+const headPos = new THREE.Vector3(0, -3.2, 0);
+const headDir = new THREE.Vector3(0, 0, 1);
+const lampDir = new THREE.Vector3(0, 0, 1);
+let camDist = 5.0, camHeight = 1.35;
+
+function animate() {
+  requestAnimationFrame(animate);
+  const dt = Math.min(clock.getDelta(), 0.05);
+
+  // --- direction caméra
+  fwd.set(Math.sin(yaw)*Math.cos(pitch), Math.sin(pitch), Math.cos(yaw)*Math.cos(pitch)).normalize();
+  right.crossVectors(fwd, up).normalize();
+
+  // --- lecture des entrées
+  let inputFwd = 0, inputTurn = 0, inputUp = 0;
+  if (locked) {
+    if (keys['KeyW']||keys['KeyZ']||keys['ArrowUp'])    inputFwd += 1;
+    if (keys['KeyS']||keys['ArrowDown'])                inputFwd -= 1;
+    if (keys['KeyA']||keys['KeyQ']||keys['ArrowLeft'])  inputTurn -= 1;
+    if (keys['KeyD']||keys['ArrowRight'])               inputTurn += 1;
+    if (keys['Space'])                                  inputUp += 1;
+    if (keys['ShiftLeft'] || keys['ShiftRight'])        inputUp -= 1;
+  }
+
+  // vitesse de rotation du regard, lissée : sert au banking en virage
+  yawRate = yawRate * (1 - Math.min(1, dt * 6)) + (yawDelta / Math.max(dt, 1e-4)) * Math.min(1, dt * 6);
+  yawDelta = 0;
+
+  // --- nage
+  const accel = new THREE.Vector3();
+  accel.addScaledVector(fwd, inputFwd);
+  accel.addScaledVector(right, inputTurn);
+  accel.y += inputUp * 1.1;
+
+  const moving = accel.lengthSq() > 0.001;
+  if (moving) accel.normalize().multiplyScalar(15);
+
+  // freinage : on ralentit vite alors qu'aucune touche n'est pressée
+  const braking = !moving && vel.length() > 3.2;
+
+  // flottabilité légère + traînée de l'eau
+  accel.y += 1.2;
+  vel.addScaledVector(accel, dt);
+  const drag = braking ? 0.012 : 0.045;   // freinage actif = traînée plus forte
+  vel.multiplyScalar(Math.pow(drag, dt));
+
+  diver.position.addScaledVector(vel, dt);
+
+  // --- limites & collisions
+  if (diver.position.y > -0.6) { diver.position.y = -0.6; vel.y = Math.min(vel.y, 0); }
+  const groundY = FLOOR_Y + 1.6;
+  if (diver.position.y < groundY) { diver.position.y = groundY; vel.y = Math.max(vel.y, 0); }
+
+  for (const c of colliders) {
+    if (diver.position.y > c.top + 0.5) continue;
+    const dx = diver.position.x - c.x, dz = diver.position.z - c.z;
+    const dist = Math.hypot(dx, dz);
+    if (dist < c.r) {
+      const nx = dx/(dist||1), nz = dz/(dist||1);
+      diver.position.x = c.x + nx*c.r;
+      diver.position.z = c.z + nz*c.r;
+      vel.x *= 0.3; vel.z *= 0.3;
+    }
+  }
+  const lim = 230;
+  diver.position.x = Math.max(-lim, Math.min(lim, diver.position.x));
+  diver.position.z = Math.max(-lim, Math.min(lim, diver.position.z));
+
+  // --- orientation du corps : le plongeur suit la caméra
+  const targetYaw = yaw;
+  diver.rotation.y += ((targetYaw - diver.rotation.y + Math.PI*3) % (Math.PI*2) - Math.PI) * Math.min(1, dt*7);
+  const targetPitch = THREE.MathUtils.clamp(-pitch*0.55 + (inputFwd>0 ? 0.18 : 0), -1.1, 1.1);
+  diver.rotation.x += (targetPitch - diver.rotation.x) * Math.min(1, dt*5);
+
+  // --- animation du plongeur
+  const speed = vel.length();
+  if (modelReady) {
+    animator.update(dt, {
+      speed,
+      inputFwd,
+      inputUp,
+      inputTurn,
+      turnInput: yawRate,
+      moving,
+      braking,
+      vy: vel.y,
+      lookPitch: pitch,
+      depth01: Math.min(1, Math.max(0, -diver.position.y) / 130),
+    });
+  }
+
+  // --- caméra 3e personne
+  // la caméra recule et le FOV s'ouvre avec la vitesse : sensation d'accélération
+  const spd01 = Math.min(1, speed / 12);
+  camDist  += ((5.0 + spd01 * 1.5) - camDist) * Math.min(1, dt * 2.5);
+  camHeight += ((1.35 + spd01 * 0.25) - camHeight) * Math.min(1, dt * 2.5);
+  camOffset.copy(fwd).multiplyScalar(-camDist);
+  camOffset.y += camHeight;
+  // léger décalage latéral dans les virages, pour dégager la vue
+  camOffset.addScaledVector(right, -THREE.MathUtils.clamp(yawRate * 0.55, -1.1, 1.1));
+  camera.position.lerp(diver.position.clone().add(camOffset), Math.min(1, dt*5.5));
+  camLook.lerp(diver.position.clone().setY(diver.position.y + 0.45), Math.min(1, dt*8));
+  camera.lookAt(camLook);
+  const targetFov = 70 + spd01 * 9;
+  if (Math.abs(camera.fov - targetFov) > 0.01) {
+    camera.fov += (targetFov - camera.fov) * Math.min(1, dt * 3);
+    camera.updateProjectionMatrix();
+  }
+
+  // --- lampe : ancrée sur le casque, elle bouge donc avec la tête animée
+  if (modelReady) {
+    attach.helmet.getWorldPosition(headPos);
+    attach.helmet.getWorldDirection(headDir);
+  } else {
+    headPos.copy(diver.position).add(new THREE.Vector3(0, 0.85, 0));
+    headDir.copy(fwd);
+  }
+  lamp.position.copy(headPos);
+  // le faisceau mixe l'orientation de la tête et la direction du regard
+  lampDir.copy(headDir).multiplyScalar(0.45).addScaledVector(fwd, 0.55).normalize();
+  lampTarget.position.copy(headPos).addScaledVector(lampDir, 20);
+  const hasCharge = lampCharge > 0;
+  lamp.intensity = (lampOn && hasCharge) ? 3.2 : 0;
+  bulb.material.color.setHex((lampOn && hasCharge) ? 0xffeec2 : 0x33404a);
+  if (lampOn && hasCharge) lampCharge = Math.max(0, lampCharge - dt * 1.1);
+  else if (!lampOn) lampCharge = Math.min(100, lampCharge + dt * 0.6);
+
+  // --- profondeur / oxygène / ambiance
+  const depth = Math.max(0, -diver.position.y);
+  const t = Math.min(1, depth / 130);
+
+  o2 -= dt * (0.9 + t * 1.6);
+  if (depth < 1.5) o2 = Math.min(100, o2 + dt * 22);  // recharge en surface
+  o2 = Math.max(0, o2);
+
+  // l'eau s'assombrit avec la profondeur
+  const col = new THREE.Color(0x0a2b3d).lerp(new THREE.Color(0x01060d), t);
+  scene.fog.color.copy(col);
+  scene.background.copy(col);
+  scene.fog.density = 0.022 + t * 0.03;
+  ambient.intensity = 0.55 * (1 - t*0.85);
+  sun.intensity = 0.9 * (1 - t);
+  surface.material.opacity = 0.22 * (1 - t*0.9);
+
+  // --- particules qui suivent le joueur (illusion de volume infini)
+  const pp = pgeo.attributes.position;
+  for (let i = 0; i < PCOUNT; i++) {
+    let y = pp.getY(i) - dt * 0.35;
+    const dxp = pp.getX(i) - diver.position.x;
+    const dyp = y - diver.position.y;
+    const dzp = pp.getZ(i) - diver.position.z;
+    if (Math.abs(dxp) > 45) pp.setX(i, pp.getX(i) - Math.sign(dxp)*90);
+    if (Math.abs(dzp) > 45) pp.setZ(i, pp.getZ(i) - Math.sign(dzp)*90);
+    if (Math.abs(dyp) > 45) y -= Math.sign(dyp)*90;
+    pp.setY(i, y);
+  }
+  pp.needsUpdate = true;
+
+  // --- bulles
+  bubTimer -= dt;
+  if (bubTimer <= 0) {
+    bubTimer = 0.42 - Math.min(0.33, speed * 0.032);
+    const bp = bubGeo.attributes.position;
+    bp.setXYZ(bubIdx,
+      headPos.x + (Math.random()-.5)*0.22,
+      headPos.y + 0.08,
+      headPos.z + (Math.random()-.5)*0.22);
+    bubVel[bubIdx] = 1.5 + Math.random();
+    bubIdx = (bubIdx + 1) % BUB;
+    bp.needsUpdate = true;
+  }
+  const bp = bubGeo.attributes.position;
+  for (let i=0;i<BUB;i++){
+    if (bubVel[i] > 0) {
+      bp.setY(i, bp.getY(i) + bubVel[i]*dt);
+      bp.setX(i, bp.getX(i) + Math.sin(performance.now()*0.002 + i)*dt*0.3);
+      if (bp.getY(i) > -0.6) bubVel[i] = 0;
+    }
+  }
+  bp.needsUpdate = true;
+
+  // --- HUD
+  document.getElementById('depth').textContent = depth.toFixed(0);
+  document.getElementById('biome').textContent = biomeFor(depth);
+  document.getElementById('o2txt').textContent = o2.toFixed(0) + '%';
+  document.getElementById('o2fill').style.width = o2 + '%';
+  document.getElementById('lamptxt').textContent = lampCharge.toFixed(0) + '%';
+  document.getElementById('lampfill').style.width = lampCharge + '%';
+  if (modelReady && animator.state !== lastShownState) {
+    lastShownState = animator.state;
+    document.getElementById('animlbl').textContent = lastShownState;
+    document.querySelector('.anim .dot').style.background = STATE_COLORS[lastShownState] || '#3fe0d0';
+    document.querySelector('.anim .dot').style.boxShadow = '0 0 8px ' + (STATE_COLORS[lastShownState] || '#3fe0d0');
+  }
+  document.getElementById('warn').style.opacity =
+    (o2 < 25 && Math.sin(performance.now()*0.006) > 0) ? 1 : 0;
+
+  renderer.render(scene, camera);
+}
+animate();
+
+addEventListener('resize', () => {
+  camera.aspect = innerWidth/innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(innerWidth, innerHeight);
+});
+</script>
+</body>
+</html>
