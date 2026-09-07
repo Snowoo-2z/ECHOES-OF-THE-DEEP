@@ -28,6 +28,46 @@ export const PROP = {
 };
 
 /**
+ * Trouve la hauteur (en fraction de H) de la ligne des bras en T-pose :
+ * c'est la tranche horizontale dont l'étendue en X est la plus grande.
+ * On ne cherche que dans la moitié haute du corps.
+ * @returns {number|null} fraction de la hauteur, ou null si indéterminé
+ */
+function detectArmLine(geo, yMin, H) {
+  const pos = geo.attributes.position;
+  const SLICES = 44;
+  const minX = new Float32Array(SLICES).fill(Infinity);
+  const maxX = new Float32Array(SLICES).fill(-Infinity);
+  const count = new Uint32Array(SLICES);
+
+  for (let i = 0; i < pos.count; i++) {
+    const f = (pos.getY(i) - yMin) / H;
+    let s = Math.floor(f * SLICES);
+    if (s < 0) s = 0; else if (s >= SLICES) s = SLICES - 1;
+    const x = pos.getX(i);
+    if (x < minX[s]) minX[s] = x;
+    if (x > maxX[s]) maxX[s] = x;
+    count[s]++;
+  }
+
+  let best = -1, bestW = 0;
+  // les bras sont forcément au-dessus de la taille
+  for (let s = Math.floor(SLICES * 0.55); s < SLICES; s++) {
+    if (count[s] < 24) continue;
+    const w = maxX[s] - minX[s];
+    if (w > bestW) { bestW = w; best = s; }
+  }
+  if (best < 0) return null;
+
+  // il faut que ce soit franchement plus large que le torse, sinon le
+  // modèle n'est pas vraiment en T-pose et on préfère la valeur par défaut
+  const torso = maxX[Math.floor(SLICES * 0.60)] - minX[Math.floor(SLICES * 0.60)];
+  if (!(bestW > torso * 1.8)) return null;
+
+  return (best + 0.5) / SLICES;
+}
+
+/**
  * Construit un squelette et skinne le mesh fourni.
  * @param {THREE.Mesh} mesh - mesh statique en T-pose
  */
@@ -44,20 +84,35 @@ export function autoRig(mesh) {
 
   const Y = f => yMin + f * H;
 
+  // --- Détection de la ligne des bras --------------------------------------
+  // En T-pose, la tranche horizontale la plus large est celle des bras
+  // tendus. On la détecte au lieu de la supposer, car elle varie selon le
+  // modèle (0.74 sur un personnage aux épaules basses, 0.81 sur un autre).
+  const armY = detectArmLine(geo, yMin, H) ?? PROP.armY;
+
+  // Toute la chaîne haute (buste, cou, tête) est calée sur la ligne des bras
+  // plutôt que sur des constantes : un modèle aux épaules basses aurait sinon
+  // le cou placé au-dessus de ses propres épaules.
+  const k = armY / PROP.armY;                       // facteur d'ajustement
+  const chestY = Math.min(PROP.chestY * k, armY - 0.02);
+  const neckY  = armY + (PROP.neckY - PROP.armY) * k;
+  const headY  = armY + (PROP.headY - PROP.armY) * k;
+  const spineY = Math.min(PROP.spineY * k, chestY - 0.06);
+  const hipsY  = Math.min(PROP.hipsY, spineY - 0.06);
+
   // --- Proportions humanoïdes (fractions de la hauteur) ---------------------
   const shoulderX = 0.11 * H;
   const hipX      = 0.085 * H;
   const handX     = armTip * 0.94;
   const elbowX    = (shoulderX + handX) / 2;
-  const armY      = 0.815;   // hauteur de la ligne des bras en T-pose
 
   //  nom, parent, x, y, z, côté (-1 gauche / +1 droite / 0 centre)
   const layout = [
-    ['hips',      null,        cx,             Y(0.50),  cz,  0],
-    ['spine',     'hips',      cx,             Y(0.62),  cz,  0],
-    ['chest',     'spine',     cx,             Y(0.74),  cz,  0],
-    ['neck',      'chest',     cx,             Y(0.845), cz,  0],
-    ['head',      'neck',      cx,             Y(0.91),  cz,  0],
+    ['hips',      null,        cx,             Y(hipsY),  cz,  0],
+    ['spine',     'hips',      cx,             Y(spineY), cz,  0],
+    ['chest',     'spine',     cx,             Y(chestY), cz,  0],
+    ['neck',      'chest',     cx,             Y(neckY),  cz,  0],
+    ['head',      'neck',      cx,             Y(headY),  cz,  0],
 
     ['shoulderL', 'chest',     cx - shoulderX, Y(armY),  cz, -1],
     ['elbowL',    'shoulderL', cx - elbowX,    Y(armY),  cz, -1],
@@ -67,13 +122,13 @@ export function autoRig(mesh) {
     ['elbowR',    'shoulderR', cx + elbowX,    Y(armY),  cz, +1],
     ['handR',     'elbowR',    cx + handX,     Y(armY),  cz, +1],
 
-    ['thighL',    'hips',      cx - hipX,      Y(0.48),  cz, -1],
-    ['kneeL',     'thighL',    cx - hipX,      Y(0.26),  cz, -1],
-    ['footL',     'kneeL',     cx - hipX,      Y(0.03),  cz, -1],
+    ['thighL',    'hips',      cx - hipX,      Y(PROP.thighY), cz, -1],
+    ['kneeL',     'thighL',    cx - hipX,      Y(PROP.kneeY),  cz, -1],
+    ['footL',     'kneeL',     cx - hipX,      Y(PROP.footY),  cz, -1],
 
-    ['thighR',    'hips',      cx + hipX,      Y(0.48),  cz, +1],
-    ['kneeR',     'thighR',    cx + hipX,      Y(0.26),  cz, +1],
-    ['footR',     'kneeR',     cx + hipX,      Y(0.03),  cz, +1],
+    ['thighR',    'hips',      cx + hipX,      Y(PROP.thighY), cz, +1],
+    ['kneeR',     'thighR',    cx + hipX,      Y(PROP.kneeY),  cz, +1],
+    ['footR',     'kneeR',     cx + hipX,      Y(PROP.footY),  cz, +1],
   ];
 
   // --- Création des os ------------------------------------------------------
