@@ -1,4 +1,4 @@
-# 🌊 Prototype v0.2 — Le plongeur
+# 🌊 Prototype v0.3 — Cinématique d'introduction
 
 Version jouable du déplacement. **Pas d'histoire, pas d'objectif** : le
 personnage, la nage, et un système d'animation complet.
@@ -7,8 +7,12 @@ personnage, la nage, et un système d'animation complet.
 
 ```bash
 python3 -m http.server 3000 --directory prototype
-# puis http://localhost:3000
 ```
+
+| Page | Contenu |
+|---|---|
+| `http://localhost:3000/intro.html` | **Cinématique d'introduction** + segment jouable au village |
+| `http://localhost:3000/` | Bac à sable de plongée (nage sous-marine) |
 
 Aucune installation : Three.js est chargé depuis un CDN (connexion requise).
 Le modèle fait 12 Mo, comptez 2-3 s au premier chargement.
@@ -115,9 +119,57 @@ debout sur **+Y**, face à **+Z**. L'échelle est normalisée automatiquement
 Si le modèle a déjà un squelette et des animations, il faudra brancher
 l'`AnimationMixer` de Three.js à la place de `DiverAnimator`.
 
+## 🎬 La cinématique (`intro.html`)
+
+**Durée : 1 min 42**, 6 plans, 11 sous-titres. Puis passage au jouable.
+
+| Plan | Durée | Contenu |
+|---|---|---|
+| Ouverture | 6 s | Texte sur noir |
+| 1 — L'île | 14 s | Vue large, voix off de la vieille femme |
+| 2 — La maison | 18 s | Le héros au travail, le vieil homme le rabroue |
+| 3 — Le plongeur | 24 s | Accostage, déballage, l'ampoule s'allume, signe de tête |
+| 4 — Le rocher | 23 s | Moment intime, l'enfant tend la montre |
+| 5 — L'appel | 18 s | La cloche, « le chef veut te voir » |
+
+Puis **segment jouable** : suivre le vieil homme jusqu'à la maison du chef.
+Il attend si tu traînes (au-delà de 7 m) et repart quand tu le rejoins.
+
+**Commandes cinématique** : `Échap` passer le plan · `Entrée` tout passer
+**Commandes jouable** : `Z Q S D` marcher · `Maj` courir · souris regarder
+
+### Architecture
+
+| Fichier | Rôle |
+|---|---|
+| `cinematic.js` | Moteur : timeline, plans, mouvements de caméra, sous-titres, fondus, letterbox |
+| `village.js` | L'île procédurale : rochers, maisons sur pilotis, ponton, feu, mouettes, océan, props |
+| `characters.js` | Chargement des `.glb` **avec repli automatique** sur des silhouettes riggées |
+| `acting.js` | 10 poses terrestres (debout, marche, assis, travail, gestes) + classe `Actor` |
+| `intro.js` | Le script : les 6 plans, la mise en scène, les répliques |
+| `follow.js` | Le segment jouable « suivre le guide » |
+
+### Modèles manquants
+
+La cinématique tourne **sans aucun modèle**. Les personnages absents
+apparaissent en silhouettes de substitution, riggées au même squelette et aux
+bonnes tailles. Voir `models/README.md` pour la liste et les conventions.
+
+## ✅ Validation de la cinématique
+
+| Test | Résultat |
+|---|---|
+| Déroulé complet | 6/6 plans joués, 102,0 s |
+| NaN sur les os / la caméra | aucun, sur 6 123 frames |
+| Sujet dans le champ | 100 % sur les 4 plans dialogués |
+| Caméra sous le décor | 0 frame |
+| Lisibilité des sous-titres | tous ≥ 15 car./s |
+| Segment jouable | arrivée en 11,7 s, guide attend puis repart |
+
 ## 🔜 Pistes pour la suite
 
-- **Cinématiques** — le système de poses se prête bien à un mode scripté
+- La scène chez le chef (le segment s'arrête devant sa porte)
+- Audio : 11 répliques + ambiances (vagues, vent, feu, cloche, sonar, mouettes)
 - Ramassage d'**Échos** et flashbacks jouables
 - Faune : bancs de poissons, créatures, la raie-monture
 - Intérieurs de bâtiments, poches d'air

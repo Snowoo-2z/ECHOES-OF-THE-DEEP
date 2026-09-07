@@ -18,6 +18,15 @@ export const BONE_NAMES = [
   'thighR', 'kneeR', 'footR',
 ];
 
+// Proportions humanoïdes, en fractions de la hauteur totale.
+// Partagées entre le rig des vrais modèles et les placeholders, pour que
+// toutes les poses soient valables sur les deux.
+export const PROP = {
+  hipsY: 0.50, spineY: 0.62, chestY: 0.74, neckY: 0.845, headY: 0.91,
+  armY: 0.815, shoulderX: 0.11, hipX: 0.085,
+  thighY: 0.48, kneeY: 0.26, footY: 0.03,
+};
+
 /**
  * Construit un squelette et skinne le mesh fourni.
  * @param {THREE.Mesh} mesh - mesh statique en T-pose
