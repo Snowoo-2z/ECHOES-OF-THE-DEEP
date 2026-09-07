@@ -96,11 +96,16 @@
 </div>
 
 <script type="importmap">
-{ "imports": { "three": "https://unpkg.com/three@0.160.0/build/three.module.js" } }
+{ "imports": {
+    "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+    "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
+} }
 </script>
 
 <script type="module">
 import * as THREE from 'three';
+import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+import { autoRig, applyRestPose, swimPose } from './rig.js';
 
 // ---------------------------------------------------------------- SCÈNE
 const scene = new THREE.Scene();
@@ -130,43 +135,67 @@ lamp.target = lampTarget;
 
 // ---------------------------------------------------------------- LE PLONGEUR
 const diver = new THREE.Group();
-
-const suitMat  = new THREE.MeshStandardMaterial({ color:0xd9622b, roughness:.65, metalness:.15 });
-const metalMat = new THREE.MeshStandardMaterial({ color:0x9aa7b0, roughness:.35, metalness:.85 });
-const glassMat = new THREE.MeshStandardMaterial({ color:0x7fe6ff, roughness:.05, metalness:.2,
-                                                  emissive:0x1c4a5a, transparent:true, opacity:.75 });
-
-// torse
-const torso = new THREE.Mesh(new THREE.CapsuleGeometry(0.34, 0.55, 6, 14), suitMat);
-diver.add(torso);
-// casque
-const helmet = new THREE.Mesh(new THREE.SphereGeometry(0.3, 20, 16), metalMat);
-helmet.position.y = 0.68; diver.add(helmet);
-// hublot
-const visor = new THREE.Mesh(new THREE.SphereGeometry(0.2, 16, 12), glassMat);
-visor.position.set(0, 0.68, 0.19); diver.add(visor);
-// bouteilles
-const tank = new THREE.Mesh(new THREE.CylinderGeometry(0.12, 0.12, 0.62, 12), metalMat);
-tank.position.set(-0.16, 0.1, -0.34); diver.add(tank);
-const tank2 = tank.clone(); tank2.position.x = 0.16; diver.add(tank2);
-// bras
-const armGeo = new THREE.CapsuleGeometry(0.1, 0.38, 4, 8);
-const armL = new THREE.Mesh(armGeo, suitMat); armL.position.set(-0.45, 0.1, 0); diver.add(armL);
-const armR = new THREE.Mesh(armGeo, suitMat); armR.position.set( 0.45, 0.1, 0); diver.add(armR);
-// jambes / palmes
-const legGeo = new THREE.CapsuleGeometry(0.12, 0.45, 4, 8);
-const legL = new THREE.Mesh(legGeo, suitMat); legL.position.set(-0.17, -0.68, 0); diver.add(legL);
-const legR = new THREE.Mesh(legGeo, suitMat); legR.position.set( 0.17, -0.68, 0); diver.add(legR);
-const finGeo = new THREE.BoxGeometry(0.26, 0.06, 0.42);
-const finL = new THREE.Mesh(finGeo, metalMat); finL.position.set(-0.17,-1.0,0.12); diver.add(finL);
-const finR = new THREE.Mesh(finGeo, metalMat); finR.position.set( 0.17,-1.0,0.12); diver.add(finR);
-// petite loupiote sur le casque
-const bulb = new THREE.Mesh(new THREE.SphereGeometry(0.06,8,8),
-             new THREE.MeshBasicMaterial({ color:0xffeec2 }));
-bulb.position.set(0, 0.85, 0.12); diver.add(bulb);
-
 diver.position.set(0, -4, 0);
 scene.add(diver);
+
+// Loupiote du casque (repositionnée sur l'ancrage une fois le modèle chargé)
+const bulb = new THREE.Mesh(new THREE.SphereGeometry(0.055, 8, 8),
+             new THREE.MeshBasicMaterial({ color:0xffeec2 }));
+bulb.position.set(0, 0.85, 0.2);
+diver.add(bulb);
+
+// Placeholder discret le temps du chargement
+const loadingMesh = new THREE.Mesh(
+  new THREE.CapsuleGeometry(0.34, 0.9, 6, 12),
+  new THREE.MeshStandardMaterial({ color:0x2d6a7a, roughness:.8, transparent:true, opacity:.4 })
+);
+diver.add(loadingMesh);
+
+let bones = null, attach = null, modelReady = false;
+const TARGET_HEIGHT = 1.85;   // mètres
+
+new GLTFLoader().load('models/diver.glb', (gltf) => {
+  let mesh = null;
+  gltf.scene.traverse(o => { if (o.isMesh && !mesh) mesh = o; });
+  if (!mesh) { console.error('Aucun mesh dans le GLB'); return; }
+
+  mesh.updateWorldMatrix(true, false);
+  mesh.geometry.applyMatrix4(mesh.matrixWorld);   // fige les transforms du GLB
+
+  // Le matériau Meshy est doubleSided : on garde, mais on adoucit le métal
+  const mat = mesh.material;
+  mat.side = THREE.FrontSide;
+  mat.roughness = Math.min(1, (mat.roughness ?? 1) * 1.0);
+  mat.envMapIntensity = 0.6;
+
+  const rig = autoRig(mesh);
+  bones = rig.bones;
+  attach = rig.attach;
+
+  // Mise à l'échelle + recentrage : pieds à -0.9, centre du corps à l'origine
+  const s = TARGET_HEIGHT / rig.height;
+  rig.skinned.scale.setScalar(s);
+  rig.skinned.position.y = -(rig.yMin + rig.height * 0.5) * s;
+
+  applyRestPose(bones);
+
+  diver.remove(loadingMesh);
+  loadingMesh.geometry.dispose();
+  loadingMesh.material.dispose();
+  diver.add(rig.skinned);
+
+  // La loupiote se cale sur l'ancrage du casque
+  diver.remove(bulb);
+  attach.helmet.add(bulb);
+  bulb.position.set(0, 0, 0);
+  bulb.scale.setScalar(1 / s);
+
+  modelReady = true;
+  console.log(`Plongeur riggé : ${Object.keys(bones).length} os, ` +
+              `${(mesh.geometry.attributes.position.count/1000).toFixed(0)}k sommets`);
+},
+undefined,
+(err) => console.error('Échec du chargement du modèle :', err));
 
 // ---------------------------------------------------------------- FOND MARIN
 const FLOOR_Y = -120;
@@ -364,17 +393,11 @@ function animate() {
   const targetPitch = THREE.MathUtils.clamp(-pitch*0.7 + (moving ? 0.25 : 0), -1.2, 1.2);
   diver.rotation.x += (targetPitch - diver.rotation.x) * Math.min(1, dt*5);
 
-  // --- animation palmes / bras
-  swimPhase += dt * (moving ? 8 : 1.6);
-  const amp = moving ? 0.45 : 0.12;
-  legL.rotation.x =  Math.sin(swimPhase) * amp;
-  legR.rotation.x = -Math.sin(swimPhase) * amp;
-  finL.position.z = 0.12 + Math.sin(swimPhase) * amp * 0.35;
-  finR.position.z = 0.12 - Math.sin(swimPhase) * amp * 0.35;
-  armL.rotation.x = Math.sin(swimPhase*0.7) * amp * 0.6;
-  armR.rotation.x = -Math.sin(swimPhase*0.7) * amp * 0.6;
-  // léger ballottement au repos
-  torso.position.y = Math.sin(swimPhase*0.9) * 0.03;
+  // --- animation de nage (procédurale, sur le squelette généré)
+  const speed = vel.length();
+  const effort = Math.min(1, speed / 9);
+  swimPhase += dt * (2.0 + effort * 9.0);
+  if (modelReady) swimPose(bones, swimPhase, effort);
 
   // --- caméra 3e personne
   camOffset.copy(fwd).multiplyScalar(-5.2);
