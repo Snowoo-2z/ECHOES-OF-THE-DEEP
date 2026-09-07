@@ -126,15 +126,18 @@ export function poseSit(p, t, v = 0) {
   const b = Math.sin(t * 0.7 + v * 4.2);
   const s = Math.sin(t * 0.26 + v * 2.0);
 
-  p.hips[0]   = -0.18;
-  p.thighL[0] = -1.28;
-  p.thighR[0] = -1.24;
-  p.thighL[2] =  0.10;
-  p.thighR[2] = -0.10;
-  p.kneeL[0]  = 1.32 + b * 0.03;      // jambes qui pendent, légère oscillation
-  p.kneeR[0]  = 1.28 - b * 0.03;
-  p.footL[0]  = 0.16;
-  p.footR[0]  = 0.14;
+  // Flexions volontairement modérées : au-delà d'environ 60° le skinning
+  // linéaire pince la maille à la hanche et au genou. On compense en
+  // inclinant le bassin, ce qui donne la même lecture visuelle.
+  p.hips[0]   = -0.52;
+  p.thighL[0] = -0.62;
+  p.thighR[0] = -0.58;
+  p.thighL[2] =  0.08;
+  p.thighR[2] = -0.08;
+  p.kneeL[0]  = 0.92 + b * 0.03;      // jambes qui pendent, légère oscillation
+  p.kneeR[0]  = 0.88 - b * 0.03;
+  p.footL[0]  = 0.20;
+  p.footR[0]  = 0.18;
 
   p.spine[0] = 0.10 + b * 0.02;
   p.chest[0] = 0.04;
@@ -157,15 +160,16 @@ export function poseCrouchWork(p, t, v = 0) {
   const w = Math.sin(t * 2.1 + v * 5.0);
   const w2 = Math.sin(t * 1.4 + v * 2.2);
 
-  p.hips[0]   = 0.30;
-  p.thighL[0] = -1.12;
-  p.thighR[0] = -1.06;
-  p.thighL[2] =  0.24;
-  p.thighR[2] = -0.24;
-  p.kneeL[0]  = 1.88;
-  p.kneeR[0]  = 1.82;
-  p.footL[0]  = 0.34;
-  p.footR[0]  = 0.30;
+  // Même contrainte que poseSit : on reste sous ~60° par articulation.
+  p.hips[0]   = -0.18;
+  p.thighL[0] = -0.58;
+  p.thighR[0] = -0.54;
+  p.thighL[2] =  0.20;
+  p.thighR[2] = -0.20;
+  p.kneeL[0]  = 1.02;
+  p.kneeR[0]  = 0.98;
+  p.footL[0]  = 0.30;
+  p.footR[0]  = 0.26;
 
   p.spine[0] = 0.26;
   p.chest[0] = 0.14;

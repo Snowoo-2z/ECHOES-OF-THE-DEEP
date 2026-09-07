@@ -68,6 +68,47 @@ function detectArmLine(geo, yMin, H) {
 }
 
 /**
+ * Trouve la base de la coiffe rigide (crâne ou casque de scaphandre).
+ * On part de la ligne des bras et on remonte : dès que la largeur retombe
+ * au niveau du torse, on est sorti des épaules et tout ce qui est au-dessus
+ * appartient à la tête d'un seul bloc.
+ * @returns {number} fraction de la hauteur
+ */
+function detectHeadBase(geo, yMin, H, armY) {
+  const pos = geo.attributes.position;
+  const S = 60;
+  const mn = new Float32Array(S).fill(Infinity);
+  const mx = new Float32Array(S).fill(-Infinity);
+  const cnt = new Uint32Array(S);
+  for (let i = 0; i < pos.count; i++) {
+    const f = (pos.getY(i) - yMin) / H;
+    let s = Math.floor(f * S);
+    if (s < 0) s = 0; else if (s >= S) s = S - 1;
+    const x = pos.getX(i);
+    if (x < mn[s]) mn[s] = x;
+    if (x > mx[s]) mx[s] = x;
+    cnt[s]++;
+  }
+  const width = s => (cnt[s] < 12 ? 0 : mx[s] - mn[s]);
+
+  // largeur du torse, mesurée bien en dessous des bras
+  let torso = 0, n = 0;
+  for (let s = Math.floor(S * 0.55); s < Math.floor(S * 0.65); s++) {
+    const w = width(s);
+    if (w > 0) { torso += w; n++; }
+  }
+  torso = n ? torso / n : 0.2 * H;
+
+  // on remonte depuis la ligne des bras jusqu'à retomber au gabarit du torse
+  const seuil = torso * 1.25;
+  const startS = Math.min(S - 1, Math.floor(armY * S));
+  for (let s = startS; s < S; s++) {
+    if (width(s) > 0 && width(s) < seuil) return (s + 0.5) / S;
+  }
+  return armY + 0.06;
+}
+
+/**
  * Construit un squelette et skinne le mesh fourni.
  * @param {THREE.Mesh} mesh - mesh statique en T-pose
  */
@@ -90,14 +131,15 @@ export function autoRig(mesh) {
   // modèle (0.74 sur un personnage aux épaules basses, 0.81 sur un autre).
   const armY = detectArmLine(geo, yMin, H) ?? PROP.armY;
 
-  // Toute la chaîne haute (buste, cou, tête) est calée sur la ligne des bras
-  // plutôt que sur des constantes : un modèle aux épaules basses aurait sinon
-  // le cou placé au-dessus de ses propres épaules.
-  const k = armY / PROP.armY;                       // facteur d'ajustement
-  const chestY = Math.min(PROP.chestY * k, armY - 0.02);
-  const neckY  = armY + (PROP.neckY - PROP.armY) * k;
-  const headY  = armY + (PROP.headY - PROP.armY) * k;
-  const spineY = Math.min(PROP.spineY * k, chestY - 0.06);
+  // Le cou et la tête restent calés en absolu : le sommet du mesh est
+  // toujours le haut du crâne, quelle que soit la hauteur des épaules.
+  // Seul le buste s'adapte, pour rester juste sous la ligne des bras.
+  const headY  = PROP.headY;
+  const neckY  = PROP.neckY;
+  // le buste se place entre la ligne des bras et le cou : sur un modèle aux
+  // épaules basses (casque volumineux), il descend avec elles
+  const chestY = Math.min(PROP.chestY, (armY + neckY) * 0.5);
+  const spineY = Math.min(PROP.spineY, chestY - 0.06);
   const hipsY  = Math.min(PROP.hipsY, spineY - 0.06);
 
   // --- Proportions humanoïdes (fractions de la hauteur) ---------------------
@@ -230,10 +272,17 @@ export function autoRig(mesh) {
   const boneIndex = {};
   for (const s of segs) boneIndex[s.name] = s.i;
 
+  // Bande de transition vers le verrouillage sur la tête, calée sur la base
+  // réelle du crâne / du casque (variable selon le modèle).
+  const headBase = detectHeadBase(geo, yMin, H, armY);
+  const headLock0 = headBase - 0.03;
+  const headLock1 = headBase + 0.03;
+
   for (let i = 0; i < n; i++) {
     v.fromBufferAttribute(pos, i);
     const dxMid = v.x - cx;
     const vSide = Math.sign(dxMid);
+    const fy = (v.y - yMin) / H;
     // 0 au centre exact → 1 dès qu'on sort de la bande médiane
     const lateral = smoothstep(Math.min(1, Math.abs(dxMid) / MID));
     cand.length = 0;
@@ -256,6 +305,25 @@ export function autoRig(mesh) {
         w *= 1 - 0.94 * inTorso;
       }
       raw.set(s.name, Math.max(raw.get(s.name) || 0, w));
+    }
+
+    // --- Coiffe rigide (casque, capuche) --------------------------------
+    // Au-dessus de la base du cou, la géométrie appartient à la tête. Sans
+    // cela un casque de scaphandre est tiraillé entre chest, neck et head,
+    // qui divergent dès que le buste bouge : la coque se déchire.
+    if (fy > headLock0) {
+      const lock = smoothstep(clamp01((fy - headLock0) / (headLock1 - headLock0)));
+      for (const [name, w] of raw) {
+        if (name === 'head') continue;
+        raw.set(name, w * (1 - lock));
+      }
+      raw.set('head', Math.max(raw.get('head') || 0, 1e-6) + lock * 1e3);
+    } else if (raw.has('head')) {
+      // Réciproquement : sous la coiffe, la tête ne doit plus tirer. Sur un
+      // scaphandre la coque descend très bas et « head » gardait jusqu'à 40 %
+      // d'influence au niveau des épaules, ce qui étirait le col.
+      const fade = smoothstep(clamp01((headLock0 - fy) / 0.06));
+      raw.set('head', raw.get('head') * (1 - fade));
     }
 
     // --- Symétrisation de la couture centrale ---------------------------
