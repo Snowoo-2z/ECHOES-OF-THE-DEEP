@@ -1,18 +1,26 @@
 // ============================================================================
 //  rig.js — Rigging automatique d'un mesh humanoïde en T-pose
 // ----------------------------------------------------------------------------
-//  Le modèle généré par Meshy n'a ni squelette ni animations : juste un mesh
-//  statique. Ce module construit un squelette à l'exécution, calcule les poids
-//  de skinning par distance aux os, et renvoie un SkinnedMesh animable.
+//  Le modèle généré par IA (Meshy) n'a ni squelette ni animations : juste un
+//  mesh statique. Ce module construit un squelette à l'exécution, calcule les
+//  poids de skinning, et renvoie un SkinnedMesh animable.
 //
-//  Prérequis sur le mesh : T-pose, debout sur +Y, face à +Z, bras à l'horizontale.
+//  Prérequis : T-pose, debout sur +Y, face à +Z, bras à l'horizontale.
 // ============================================================================
 import * as THREE from 'three';
+
+// Nom des os, dans l'ordre d'indexation du squelette
+export const BONE_NAMES = [
+  'hips', 'spine', 'chest', 'neck', 'head',
+  'shoulderL', 'elbowL', 'handL',
+  'shoulderR', 'elbowR', 'handR',
+  'thighL', 'kneeL', 'footL',
+  'thighR', 'kneeR', 'footR',
+];
 
 /**
  * Construit un squelette et skinne le mesh fourni.
  * @param {THREE.Mesh} mesh - mesh statique en T-pose
- * @returns {{ skinned: THREE.SkinnedMesh, bones: Object, attach: Object, height: number }}
  */
 export function autoRig(mesh) {
   const geo = mesh.geometry;
@@ -20,56 +28,57 @@ export function autoRig(mesh) {
   const bb = geo.boundingBox;
 
   const yMin = bb.min.y, yMax = bb.max.y;
-  const H = yMax - yMin;                    // hauteur totale du personnage
-  const armTip = Math.max(Math.abs(bb.min.x), Math.abs(bb.max.x)); // bout des doigts
+  const H = yMax - yMin;
+  const armTip = Math.max(Math.abs(bb.min.x), Math.abs(bb.max.x));
   const cx = (bb.min.x + bb.max.x) / 2;
   const cz = (bb.min.z + bb.max.z) / 2;
 
-  // Position verticale à partir d'une fraction de la hauteur
   const Y = f => yMin + f * H;
 
-  // --- Proportions humanoïdes (fractions de la hauteur totale) --------------
-  const shoulderX = 0.11 * H;   // écartement des épaules
-  const hipX      = 0.085 * H;  // écartement des hanches
-  const handX     = armTip * 0.96;
+  // --- Proportions humanoïdes (fractions de la hauteur) ---------------------
+  const shoulderX = 0.11 * H;
+  const hipX      = 0.085 * H;
+  const handX     = armTip * 0.94;
   const elbowX    = (shoulderX + handX) / 2;
+  const armY      = 0.815;   // hauteur de la ligne des bras en T-pose
 
-  // Définition du squelette : nom, parent, position monde (espace du mesh)
+  //  nom, parent, x, y, z, côté (-1 gauche / +1 droite / 0 centre)
   const layout = [
-    ['hips',      null,       cx,             Y(0.50), cz],
-    ['spine',     'hips',     cx,             Y(0.62), cz],
-    ['chest',     'spine',    cx,             Y(0.74), cz],
-    ['neck',      'chest',    cx,             Y(0.845), cz],
-    ['head',      'neck',     cx,             Y(0.91), cz],
+    ['hips',      null,        cx,             Y(0.50),  cz,  0],
+    ['spine',     'hips',      cx,             Y(0.62),  cz,  0],
+    ['chest',     'spine',     cx,             Y(0.74),  cz,  0],
+    ['neck',      'chest',     cx,             Y(0.845), cz,  0],
+    ['head',      'neck',      cx,             Y(0.91),  cz,  0],
 
-    ['shoulderL', 'chest',    cx - shoulderX, Y(0.815), cz],
-    ['elbowL',    'shoulderL',cx - elbowX,    Y(0.815), cz],
-    ['handL',     'elbowL',   cx - handX,     Y(0.815), cz],
+    ['shoulderL', 'chest',     cx - shoulderX, Y(armY),  cz, -1],
+    ['elbowL',    'shoulderL', cx - elbowX,    Y(armY),  cz, -1],
+    ['handL',     'elbowL',    cx - handX,     Y(armY),  cz, -1],
 
-    ['shoulderR', 'chest',    cx + shoulderX, Y(0.815), cz],
-    ['elbowR',    'shoulderR',cx + elbowX,    Y(0.815), cz],
-    ['handR',     'elbowR',   cx + handX,     Y(0.815), cz],
+    ['shoulderR', 'chest',     cx + shoulderX, Y(armY),  cz, +1],
+    ['elbowR',    'shoulderR', cx + elbowX,    Y(armY),  cz, +1],
+    ['handR',     'elbowR',    cx + handX,     Y(armY),  cz, +1],
 
-    ['thighL',    'hips',     cx - hipX,      Y(0.48), cz],
-    ['kneeL',     'thighL',   cx - hipX,      Y(0.26), cz],
-    ['footL',     'kneeL',    cx - hipX,      Y(0.03), cz],
+    ['thighL',    'hips',      cx - hipX,      Y(0.48),  cz, -1],
+    ['kneeL',     'thighL',    cx - hipX,      Y(0.26),  cz, -1],
+    ['footL',     'kneeL',     cx - hipX,      Y(0.03),  cz, -1],
 
-    ['thighR',    'hips',     cx + hipX,      Y(0.48), cz],
-    ['kneeR',     'thighR',   cx + hipX,      Y(0.26), cz],
-    ['footR',     'kneeR',    cx + hipX,      Y(0.03), cz],
+    ['thighR',    'hips',      cx + hipX,      Y(0.48),  cz, +1],
+    ['kneeR',     'thighR',    cx + hipX,      Y(0.26),  cz, +1],
+    ['footR',     'kneeR',     cx + hipX,      Y(0.03),  cz, +1],
   ];
 
   // --- Création des os ------------------------------------------------------
   const bones = {};
   const boneList = [];
   const worldPos = {};
+  const sideOf = {};
 
-  for (const [name, parent, x, y, z] of layout) {
+  for (const [name, parent, x, y, z, side] of layout) {
     const b = new THREE.Bone();
     b.name = name;
     worldPos[name] = new THREE.Vector3(x, y, z);
+    sideOf[name] = side;
     if (parent) {
-      // position locale = monde - monde du parent
       b.position.copy(worldPos[name]).sub(worldPos[parent]);
       bones[parent].add(b);
     } else {
@@ -79,8 +88,7 @@ export function autoRig(mesh) {
     boneList.push(b);
   }
 
-  // --- Segments servant au calcul des poids ---------------------------------
-  // Chaque os influence la zone autour du segment qui le relie à son enfant.
+  // --- Segments d'influence -------------------------------------------------
   const pairs = [
     ['hips','spine'], ['spine','chest'], ['chest','neck'], ['neck','head'],
     ['shoulderL','elbowL'], ['elbowL','handL'],
@@ -90,28 +98,40 @@ export function autoRig(mesh) {
   ];
   const segs = pairs.map(([a, b]) => ({
     i: boneList.indexOf(bones[a]),
-    a: worldPos[a],
-    b: worldPos[b],
+    name: a,
+    a: worldPos[a], b: worldPos[b],
+    side: sideOf[a],
+    yLo: Math.min(worldPos[a].y, worldPos[b].y),
   }));
-  // La tête et les mains/pieds prolongent un peu leur segment pour capter
-  // les extrémités (casque, palmes, gants).
-  const extend = (from, to, k) => worldPos[to].clone().sub(worldPos[from]).multiplyScalar(k).add(worldPos[to]);
-  segs.push({ i: boneList.indexOf(bones.head),  a: worldPos.head,  b: extend('neck','head', 1.6) });
-  segs.push({ i: boneList.indexOf(bones.footL), a: worldPos.footL, b: extend('kneeL','footL', 0.5).setZ(cz + 0.35 * H) });
-  segs.push({ i: boneList.indexOf(bones.footR), a: worldPos.footR, b: extend('kneeR','footR', 0.5).setZ(cz + 0.35 * H) });
 
-  // --- Calcul des poids de skinning ----------------------------------------
+  // Prolongements pour capter les extrémités (casque, gants, palmes)
+  const ext = (from, to, k) =>
+    worldPos[to].clone().sub(worldPos[from]).multiplyScalar(k).add(worldPos[to]);
+
+  segs.push({ i: boneList.indexOf(bones.head), name:'head', a: worldPos.head,
+              b: ext('neck','head', 1.9), side: 0, yLo: worldPos.head.y });
+  // Les palmes dépassent vers l'avant (+Z) au niveau des pieds
+  segs.push({ i: boneList.indexOf(bones.footL), name:'footL', a: worldPos.footL,
+              b: worldPos.footL.clone().setZ(cz + 0.30 * H).setY(Y(0.01)),
+              side: -1, yLo: Y(0.0) });
+  segs.push({ i: boneList.indexOf(bones.footR), name:'footR', a: worldPos.footR,
+              b: worldPos.footR.clone().setZ(cz + 0.30 * H).setY(Y(0.01)),
+              side: +1, yLo: Y(0.0) });
+  // Les mains couvrent aussi le bout des doigts
+  segs.push({ i: boneList.indexOf(bones.handL), name:'handL', a: worldPos.handL,
+              b: ext('elbowL','handL', 0.35), side: -1, yLo: worldPos.handL.y });
+  segs.push({ i: boneList.indexOf(bones.handR), name:'handR', a: worldPos.handR,
+              b: ext('elbowR','handR', 0.35), side: +1, yLo: worldPos.handR.y });
+
+  // --- Poids de skinning ----------------------------------------------------
   const pos = geo.attributes.position;
   const n = pos.count;
   const skinIndex  = new Uint16Array(n * 4);
   const skinWeight = new Float32Array(n * 4);
 
   const v = new THREE.Vector3();
-  const ab = new THREE.Vector3();
-  const av = new THREE.Vector3();
-  const proj = new THREE.Vector3();
+  const ab = new THREE.Vector3(), av = new THREE.Vector3(), proj = new THREE.Vector3();
 
-  // distance d'un point au segment [a,b]
   function distToSeg(p, a, b) {
     ab.subVectors(b, a);
     av.subVectors(p, a);
@@ -122,18 +142,77 @@ export function autoRig(mesh) {
     return p.distanceTo(proj);
   }
 
-  const EPS = 0.02 * H;   // évite les divisions par zéro
-  const POW = 4;          // netteté de l'influence (plus haut = moins de bavure)
+  const EPS = 0.018 * H;
+  const POW = 4.2;
+  // Un sommet du bras gauche ne doit pas être tiré par le bras droit.
+  const CROSS_PENALTY = 0.06;
+  // Largeur de la bande centrale où gauche et droite se rejoignent
+  // (entrejambe, sternum, nuque). Dans cette bande, les os latéraux sont
+  // atténués au profit des os centraux, sinon la maille se déchire quand
+  // les jambes battent en opposition de phase.
+  const MID = 0.055 * H;
+  const smoothstep = t => t * t * (3 - 2 * t);
+  const lerpN = (a, b, t) => a + (b - a) * t;
+  const clamp01 = t => Math.max(0, Math.min(1, t));
+  const ARM_BONES = new Set(['shoulderL','elbowL','handL','shoulderR','elbowR','handR']);
   const cand = [];
+  const raw = new Map();
+
+  // Paires miroir, pour la symétrisation de la couture centrale
+  const MIRROR = [
+    ['thighL','thighR'], ['kneeL','kneeR'], ['footL','footR'],
+    ['shoulderL','shoulderR'], ['elbowL','elbowR'], ['handL','handR'],
+  ];
+  const boneIndex = {};
+  for (const s of segs) boneIndex[s.name] = s.i;
 
   for (let i = 0; i < n; i++) {
     v.fromBufferAttribute(pos, i);
+    const dxMid = v.x - cx;
+    const vSide = Math.sign(dxMid);
+    // 0 au centre exact → 1 dès qu'on sort de la bande médiane
+    const lateral = smoothstep(Math.min(1, Math.abs(dxMid) / MID));
     cand.length = 0;
+
+    // Poids bruts, indexés par nom d'os
+    raw.clear();
     for (const s of segs) {
       const d = distToSeg(v, s.a, s.b);
-      cand.push({ i: s.i, w: 1 / Math.pow(d + EPS, POW) });
+      let w = 1 / Math.pow(d + EPS, POW);
+      if (s.side !== 0) {
+        if (vSide !== 0 && s.side !== vSide) w *= CROSS_PENALTY;
+        w *= 0.12 + 0.88 * lateral;
+      }
+      // Les os de bras ne doivent pas emporter le torse ni l'équipement
+      // rigide fixé dessus (bouteilles d'oxygène dans le dos). On atténue
+      // leur influence à l'intérieur de la largeur d'épaules.
+      if (ARM_BONES.has(s.name)) {
+        const inTorso = 1 - smoothstep(clamp01(
+          (Math.abs(dxMid) - shoulderX * 0.72) / (shoulderX * 0.55)));
+        w *= 1 - 0.94 * inTorso;
+      }
+      raw.set(s.name, Math.max(raw.get(s.name) || 0, w));
     }
-    // on garde les 4 os les plus influents
+
+    // --- Symétrisation de la couture centrale ---------------------------
+    // Sur l'axe médian (entrejambe, sternum, nuque), les sommets sont
+    // dupliqués et se voient attribuer arbitrairement l'os gauche OU droit.
+    // Quand les deux os divergent (battement en opposition), la maille se
+    // déchire. On égalise donc les paires L/R d'autant plus qu'on est près
+    // du centre.
+    if (lateral < 1) {
+      const mix = 1 - lateral;   // 1 au centre exact, 0 hors de la bande
+      for (const [l, r] of MIRROR) {
+        const wl = raw.get(l) || 0, wr = raw.get(r) || 0;
+        if (wl === 0 && wr === 0) continue;
+        const avg = (wl + wr) * 0.5;
+        raw.set(l, lerpN(wl, avg, mix));
+        raw.set(r, lerpN(wr, avg, mix));
+      }
+    }
+
+    for (const [name, w] of raw) cand.push({ i: boneIndex[name], w });
+
     cand.sort((p, q) => q.w - p.w);
     let sum = 0;
     for (let k = 0; k < 4; k++) sum += cand[k].w;
@@ -146,15 +225,14 @@ export function autoRig(mesh) {
   geo.setAttribute('skinIndex',  new THREE.Uint16BufferAttribute(skinIndex, 4));
   geo.setAttribute('skinWeight', new THREE.Float32BufferAttribute(skinWeight, 4));
 
-  // --- Construction du SkinnedMesh -----------------------------------------
+  // --- SkinnedMesh ----------------------------------------------------------
   const skinned = new THREE.SkinnedMesh(geo, mesh.material);
   skinned.name = 'diverSkinned';
-  skinned.frustumCulled = false;           // le skinning peut sortir de la bbox
+  skinned.frustumCulled = false;
   skinned.add(bones.hips);
   skinned.bind(new THREE.Skeleton(boneList));
 
-  // --- Points d'ancrage pour l'équipement ----------------------------------
-  // (lampe, propulseur, scanner… à accrocher plus tard)
+  // --- Ancrages pour l'équipement ------------------------------------------
   const mk = (parent, x, y, z) => {
     const o = new THREE.Object3D();
     o.position.set(x, y, z);
@@ -164,64 +242,10 @@ export function autoRig(mesh) {
   const attach = {
     handR:  mk(bones.handR, 0, 0, 0.04 * H),
     handL:  mk(bones.handL, 0, 0, 0.04 * H),
-    back:   mk(bones.chest, 0, 0, -0.10 * H),
-    helmet: mk(bones.head,  0, 0.02 * H, 0.09 * H),
+    back:   mk(bones.chest, 0, 0, -0.11 * H),
+    helmet: mk(bones.head,  0, 0.03 * H, 0.10 * H),
+    hips:   mk(bones.hips,  0, 0, 0.09 * H),
   };
 
-  return { skinned, bones, attach, height: H, yMin, yMax };
-}
-
-/**
- * Pose de repos : le modèle est en T-pose, on ramène les bras le long du corps.
- * À appeler une fois après le rig.
- */
-export function applyRestPose(bones) {
-  // Bras baissés : le bras gauche pointe vers -X, +Z le fait descendre
-  bones.shoulderL.rotation.z =  1.18;
-  bones.shoulderR.rotation.z = -1.18;
-  // Coudes légèrement fléchis vers l'avant
-  bones.elbowL.rotation.y = -0.25;
-  bones.elbowR.rotation.y =  0.25;
-  // Léger écartement naturel
-  bones.shoulderL.rotation.x = 0.12;
-  bones.shoulderR.rotation.x = 0.12;
-}
-
-/**
- * Animation procédurale de nage.
- * @param {Object} b      - les os
- * @param {number} phase  - phase du cycle (rad), avance avec la vitesse
- * @param {number} effort - 0 = dérive immobile, 1 = nage soutenue
- */
-export function swimPose(b, phase, effort) {
-  const k = 0.15 + effort * 0.85;
-  const s  = Math.sin(phase);
-  const s2 = Math.sin(phase + 0.7);   // les tibias suivent avec un retard
-  const s3 = Math.sin(phase * 0.5);   // ondulation lente du corps
-
-  // --- Battement de palmes (flutter kick), en opposition de phase
-  b.thighL.rotation.x =  s  * 0.42 * k;
-  b.thighR.rotation.x = -s  * 0.42 * k;
-  b.kneeL.rotation.x  = (0.22 + s2 * 0.38) * k;
-  b.kneeR.rotation.x  = (0.22 - s2 * 0.38) * k;
-  b.footL.rotation.x  = -s2 * 0.30 * k;
-  b.footR.rotation.x  =  s2 * 0.30 * k;
-
-  // --- Bras : plaqués le long du corps en nage, plus ouverts en dérive
-  const tuck = effort;                       // 1 = serrés, 0 = flottants
-  b.shoulderL.rotation.z =  1.18 + tuck * 0.22 + s3 * 0.06;
-  b.shoulderR.rotation.z = -1.18 - tuck * 0.22 - s3 * 0.06;
-  b.shoulderL.rotation.x =  0.12 + s3 * 0.10 * (1 - tuck);
-  b.shoulderR.rotation.x =  0.12 - s3 * 0.10 * (1 - tuck);
-  b.elbowL.rotation.y = -0.25 - tuck * 0.35;
-  b.elbowR.rotation.y =  0.25 + tuck * 0.35;
-
-  // --- Ondulation du buste
-  b.spine.rotation.x = s3 * 0.06 * k;
-  b.chest.rotation.y = s3 * 0.05 * (1 - tuck * 0.5);
-  b.hips.rotation.x  = -s3 * 0.05 * k;
-
-  // --- La tête reste stable, regard vers l'avant
-  b.neck.rotation.x = -0.10 - effort * 0.14;
-  b.head.rotation.y = s3 * 0.07 * (1 - tuck);
+  return { skinned, bones, attach, height: H, yMin, yMax, skeleton: skinned.skeleton };
 }

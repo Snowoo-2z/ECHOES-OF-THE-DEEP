@@ -1,17 +1,17 @@
-# 🌊 Prototype v0.1 — Déplacement
+# 🌊 Prototype v0.2 — Le plongeur
 
-Première version jouable. **Pas d'histoire, pas d'objectif** : juste le plongeur et la nage 3D sous-marine.
+Version jouable du déplacement. **Pas d'histoire, pas d'objectif** : le
+personnage, la nage, et un système d'animation complet.
 
 ## ▶️ Lancer
-
-Ouvre `index.html` dans un navigateur, ou sers le dossier :
 
 ```bash
 python3 -m http.server 3000 --directory prototype
 # puis http://localhost:3000
 ```
 
-Aucune installation : Three.js est chargé depuis un CDN (connexion internet requise).
+Aucune installation : Three.js est chargé depuis un CDN (connexion requise).
+Le modèle fait 12 Mo, comptez 2-3 s au premier chargement.
 
 ## 🎮 Contrôles
 
@@ -21,49 +21,105 @@ Aucune installation : Three.js est chargé depuis un CDN (connexion internet req
 | `Espace` | Monter |
 | `Maj` | Descendre |
 | Souris | Regarder autour |
-| `F` | Allumer / éteindre la lampe |
-| `Échap` | Libérer la souris (pause) |
+| `F` | Lampe frontale |
+| `H` | Masquer l'indicateur d'état d'animation |
+| `Échap` | Libérer la souris |
 
-## ✅ Ce qui est dans cette version
+## 🎬 Les 7 animations
 
-- Modèle 3D du plongeur (`models/diver.glb`, généré via Meshy) en vue 3e personne
-- **Rigging automatique par code** : le GLB est livré sans squelette, `rig.js`
-  en génère un de 17 os et calcule les poids de skinning au chargement
-- Animation de nage procédurale : battement de palmes, bras qui se plaquent
-  avec l'effort, ondulation du buste
-- Nage 6 directions avec inertie et traînée aquatique (flottabilité légère)
-- Lampe frontale avec jauge : se décharge allumée, se recharge éteinte
-- Jauge d'oxygène : se vide plus vite en profondeur, se recharge en surface
-- Profondimètre + nom du biome courant (Résidentiel → Gratte-ciels → Métro → Bunkers)
-- Ville engloutie procédurale : ~34 bâtiments avec coraux, collisions cylindriques
-- Fond marin vallonné, surface de l'eau vue du dessous
-- Neige marine + bulles émises par le plongeur
-- Assombrissement progressif de l'eau et du brouillard avec la profondeur
+Le badge coloré en bas à gauche indique l'état courant. Pour toutes les voir :
 
-## 🦴 Le rig (`rig.js`)
+| État | Couleur | Comment le déclencher |
+|------|---------|----------------------|
+| **IDLE** | bleu pâle | Ne rien toucher — dérive en apesanteur, bras qui flottent |
+| **CRUISE** | turquoise | `Z` — nage de croisière, battement régulier |
+| **SPRINT** | jaune | `Z` maintenu jusqu'à dépasser 8,5 m/s — corps profilé, bras plaqués |
+| **ASCEND** | vert | `Espace` seul — corps vertical, brasse vers le bas |
+| **DESCEND** | bleu-violet | `Maj` seul — piqué tête en avant |
+| **BRAKE** | orange | Lâcher tout en pleine vitesse — bras écartés face au courant |
+| **BACK** | violet | `S` — brasse inversée |
 
-Le modèle généré par IA est un mesh statique : **ni squelette, ni animations**.
-`rig.js` le rigge à l'exécution :
+## 🦴 Architecture
 
-1. Un squelette humanoïde de 17 os est placé par proportions, déduites de la
-   bounding box du mesh (T-pose, debout sur +Y, face à +Z).
-2. Les poids de skinning sont calculés par distance inverse aux segments d'os
-   (4 influences par sommet).
-3. `swimPose()` anime le squelette procéduralement selon la vitesse.
+### `rig.js` — rigging automatique
 
-Des **points d'ancrage** sont exposés pour l'équipement futur :
-`attach.handR`, `attach.handL`, `attach.back`, `attach.helmet`.
+Le modèle généré par IA est un mesh statique : **ni squelette, ni animations**
+(vérifié : `skins: 0`, `animations: 0`). Il est donc riggé à l'exécution.
 
-### Remplacer le modèle
+1. **Squelette de 17 os** placé par proportions humanoïdes, déduites de la
+   bounding box du mesh.
+2. **Poids de skinning** par distance inverse aux segments d'os, 4 influences
+   par sommet, avec trois corrections :
+   - *anti-bavure latérale* — un sommet du bras gauche n'est pas tiré par le
+     bras droit ;
+   - *symétrisation de la couture centrale* — sur l'axe médian (entrejambe,
+     sternum), les sommets dupliqués sont égalisés entre les os gauche et
+     droit, sinon la maille se déchire quand les jambes battent en opposition ;
+   - *protection de l'équipement rigide* — les os de bras n'emportent pas les
+     bouteilles d'oxygène fixées dans le dos.
+3. **Points d'ancrage** exposés : `attach.handR`, `handL`, `back`, `helmet`,
+   `hips` — pour accrocher lampe, propulseur ou scanner plus tard.
+
+### `animation.js` — animation procédurale
+
+Chaque état est une fonction qui écrit une pose (rotations par os) dans un
+buffer réutilisé. L'animateur mélange la pose sortante et la pose entrante
+pendant la transition, puis applique des **couches additives** :
+
+- **respiration** — s'accélère à l'effort et en profondeur ;
+- **banking** — le corps s'incline dans les virages, la tête reste droite ;
+- **turbulence** — bruit lent, plus marqué à faible vitesse ;
+- **regard** — la nuque compense le tangage de la caméra.
+
+Deux garde-fous évitent tout défaut visible :
+
+- **`MIN_STATE_TIME`** empêche le clignotement quand le joueur est pile au
+  seuil entre deux états ;
+- **lissage de sortie** borne la vitesse angulaire de chaque articulation
+  (`MAX_RATE`), donc aucun claquement n'est possible même en cas de
+  changement d'état brutal.
+
+## ✅ Validation
+
+Le rig et les animations ont été vérifiés numériquement (pas de navigateur
+disponible dans l'environnement de dev) :
+
+| Test | Résultat |
+|------|----------|
+| Somme des poids de skinning | erreur max `4.8e-8` |
+| Erreur en pose de repos | `6.7e-8` (bind pose exacte) |
+| Étirement moyen des arêtes | 1,02× à 1,05× selon l'état |
+| NaN / Infinity | aucun, sur 36 000 frames |
+| Dérive d'angle sur 10 min | aucune (max 77°) |
+| Oscillation d'état | 8 changements sur 870 frames de jeu scripté |
+| Saut angulaire en transition | 6,4°/frame max, sous le seuil de perception |
+| Coût CPU de l'animation | 3,9 µs/frame, soit 0,02 % du budget 60 fps |
+
+**Limite connue** : le skinning linéaire produit jusqu'à ~10 cm de pincement à
+l'épaule dans la pose de sprint (5 % de la hauteur du perso). C'est le défaut
+classique du *linear blend skinning* ; le corriger demanderait des
+*corrective shapes* ou du *dual quaternion skinning*.
+
+## 🎥 Caméra
+
+Elle recule et le champ de vision s'ouvre avec la vitesse, avec un léger
+décalage latéral dans les virages. La lampe est ancrée au casque : elle suit
+donc les mouvements de tête de l'animation.
+
+## 🔄 Remplacer le modèle
 
 Dépose un nouveau `.glb` en `models/diver.glb`. Il doit être en **T-pose**,
 debout sur **+Y**, face à **+Z**. L'échelle est normalisée automatiquement
-(`TARGET_HEIGHT = 1.85 m`), peu importe la taille d'origine.
+(`TARGET_HEIGHT = 1.85 m`).
+
+Si le modèle a déjà un squelette et des animations, il faudra brancher
+l'`AnimationMixer` de Three.js à la place de `DiverAnimator`.
 
 ## 🔜 Pistes pour la suite
 
+- **Cinématiques** — le système de poses se prête bien à un mode scripté
 - Ramassage d'**Échos** et flashbacks jouables
-- Faune (bancs de poissons, créatures, la raie-monture)
-- Intérieurs de bâtiments et poches d'air
+- Faune : bancs de poissons, créatures, la raie-monture
+- Intérieurs de bâtiments, poches d'air
 - Base flottante et upgrades du scaphandre
 - Sons : ambiance, respiration, craquements du métal

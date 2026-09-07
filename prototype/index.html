@@ -33,6 +33,12 @@
   #o2fill    { background:linear-gradient(90deg,#3fe0d0,#7ff5ff); }
   #lampfill  { background:linear-gradient(90deg,#f5b942,#ffe9a8); }
 
+  .anim {
+    display:flex; align-items:center; gap:8px; margin-bottom:14px;
+    font-size:11px; letter-spacing:3px; text-transform:uppercase;
+  }
+  .anim .dot { width:6px; height:6px; border-radius:50%; background:#3fe0d0;
+               box-shadow:0 0 8px #3fe0d0; transition:background .2s, box-shadow .2s; }
   .help { font-size:11px; line-height:1.9; opacity:.45; text-align:right; }
   .help b { color:#8fd8ff; font-weight:600; }
 
@@ -69,6 +75,7 @@
   </div>
   <div class="bottom">
     <div class="gauges">
+      <div class="anim" id="animstate"><span class="dot"></span><span id="animlbl">IDLE</span></div>
       <div class="gauge">
         <div class="row"><span>Oxygène</span><span id="o2txt">100%</span></div>
         <div class="bar"><div class="fill" id="o2fill"></div></div>
@@ -81,7 +88,8 @@
     <div class="help">
       <b>Z Q S D</b> / flèches — nager<br>
       <b>Espace</b> monter · <b>Maj</b> descendre<br>
-      <b>Souris</b> regarder · <b>F</b> lampe · <b>Échap</b> pause
+      <b>Souris</b> regarder · <b>F</b> lampe · <b>Échap</b> pause<br>
+      <b>H</b> masquer l'état d'animation
     </div>
   </div>
 </div>
@@ -105,7 +113,8 @@
 <script type="module">
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
-import { autoRig, applyRestPose, swimPose } from './rig.js';
+import { autoRig } from './rig.js';
+import { DiverAnimator } from './animation.js';
 
 // ---------------------------------------------------------------- SCÈNE
 const scene = new THREE.Scene();
@@ -151,7 +160,7 @@ const loadingMesh = new THREE.Mesh(
 );
 diver.add(loadingMesh);
 
-let bones = null, attach = null, modelReady = false;
+let bones = null, attach = null, modelReady = false, animator = null;
 const TARGET_HEIGHT = 1.85;   // mètres
 
 new GLTFLoader().load('models/diver.glb', (gltf) => {
@@ -177,7 +186,8 @@ new GLTFLoader().load('models/diver.glb', (gltf) => {
   rig.skinned.scale.setScalar(s);
   rig.skinned.position.y = -(rig.yMin + rig.height * 0.5) * s;
 
-  applyRestPose(bones);
+  animator = new DiverAnimator(bones);
+  animator.applyRest();
 
   diver.remove(loadingMesh);
   loadingMesh.geometry.dispose();
@@ -293,6 +303,10 @@ let locked = false, yaw = 0, pitch = -0.12;
 addEventListener('keydown', e => {
   keys[e.code] = true;
   if (e.code === 'KeyF') lampOn = !lampOn;
+  if (e.code === 'KeyH') {
+    const el = document.getElementById('animstate');
+    el.style.display = el.style.display === 'none' ? 'flex' : 'none';
+  }
   if (e.code === 'Space') e.preventDefault();
 });
 addEventListener('keyup', e => keys[e.code] = false);
@@ -309,13 +323,21 @@ document.addEventListener('pointerlockchange', () => {
 });
 addEventListener('mousemove', e => {
   if (!locked) return;
-  yaw   -= e.movementX * 0.0022;
+  const dyaw = -e.movementX * 0.0022;
+  yaw += dyaw;
+  yawDelta += dyaw;
   pitch -= e.movementY * 0.0019;
   pitch = Math.max(-1.35, Math.min(1.35, pitch));
 });
 
 // ---------------------------------------------------------------- ÉTAT
+const STATE_COLORS = {
+  IDLE:'#7fb4d0', CRUISE:'#3fe0d0', SPRINT:'#ffd166',
+  ASCEND:'#8affc1', DESCEND:'#9fb8ff', BRAKE:'#ff8f6b', BACK:'#c9a0ff',
+};
+let lastShownState = '';
 let vel = new THREE.Vector3();
+let yawRate = 0, yawDelta = 0;
 let o2 = 100, lampCharge = 100, lampOn = true;
 let swimPhase = 0;
 
@@ -336,6 +358,11 @@ function biomeFor(d) {
 const clock = new THREE.Clock();
 const fwd = new THREE.Vector3(), right = new THREE.Vector3(), up = new THREE.Vector3(0,1,0);
 const camOffset = new THREE.Vector3();
+const camLook = new THREE.Vector3(0, -4, 0);
+const headPos = new THREE.Vector3(0, -3.2, 0);
+const headDir = new THREE.Vector3(0, 0, 1);
+const lampDir = new THREE.Vector3(0, 0, 1);
+let camDist = 5.0, camHeight = 1.35;
 
 function animate() {
   requestAnimationFrame(animate);
@@ -345,25 +372,38 @@ function animate() {
   fwd.set(Math.sin(yaw)*Math.cos(pitch), Math.sin(pitch), Math.cos(yaw)*Math.cos(pitch)).normalize();
   right.crossVectors(fwd, up).normalize();
 
+  // --- lecture des entrées
+  let inputFwd = 0, inputTurn = 0, inputUp = 0;
+  if (locked) {
+    if (keys['KeyW']||keys['KeyZ']||keys['ArrowUp'])    inputFwd += 1;
+    if (keys['KeyS']||keys['ArrowDown'])                inputFwd -= 1;
+    if (keys['KeyA']||keys['KeyQ']||keys['ArrowLeft'])  inputTurn -= 1;
+    if (keys['KeyD']||keys['ArrowRight'])               inputTurn += 1;
+    if (keys['Space'])                                  inputUp += 1;
+    if (keys['ShiftLeft'] || keys['ShiftRight'])        inputUp -= 1;
+  }
+
+  // vitesse de rotation du regard, lissée : sert au banking en virage
+  yawRate = yawRate * (1 - Math.min(1, dt * 6)) + (yawDelta / Math.max(dt, 1e-4)) * Math.min(1, dt * 6);
+  yawDelta = 0;
+
   // --- nage
   const accel = new THREE.Vector3();
-  if (locked) {
-    const boost = keys['ShiftLeft'] && (keys['KeyW']||keys['KeyZ']||keys['ArrowUp']) ? 1 : 1;
-    if (keys['KeyW']||keys['KeyZ']||keys['ArrowUp'])    accel.add(fwd);
-    if (keys['KeyS']||keys['ArrowDown'])                accel.sub(fwd);
-    if (keys['KeyA']||keys['KeyQ']||keys['ArrowLeft'])  accel.sub(right);
-    if (keys['KeyD']||keys['ArrowRight'])               accel.add(right);
-    if (keys['Space'])      accel.y += 1.1;
-    if (keys['ShiftLeft'] || keys['ShiftRight']) accel.y -= 1.1;
-    accel.multiplyScalar(boost);
-  }
+  accel.addScaledVector(fwd, inputFwd);
+  accel.addScaledVector(right, inputTurn);
+  accel.y += inputUp * 1.1;
+
   const moving = accel.lengthSq() > 0.001;
   if (moving) accel.normalize().multiplyScalar(15);
+
+  // freinage : on ralentit vite alors qu'aucune touche n'est pressée
+  const braking = !moving && vel.length() > 3.2;
 
   // flottabilité légère + traînée de l'eau
   accel.y += 1.2;
   vel.addScaledVector(accel, dt);
-  vel.multiplyScalar(Math.pow(0.045, dt)); // drag fort = sensation aquatique
+  const drag = braking ? 0.012 : 0.045;   // freinage actif = traînée plus forte
+  vel.multiplyScalar(Math.pow(drag, dt));
 
   diver.position.addScaledVector(vel, dt);
 
@@ -390,25 +430,56 @@ function animate() {
   // --- orientation du corps : le plongeur suit la caméra
   const targetYaw = yaw;
   diver.rotation.y += ((targetYaw - diver.rotation.y + Math.PI*3) % (Math.PI*2) - Math.PI) * Math.min(1, dt*7);
-  const targetPitch = THREE.MathUtils.clamp(-pitch*0.7 + (moving ? 0.25 : 0), -1.2, 1.2);
+  const targetPitch = THREE.MathUtils.clamp(-pitch*0.55 + (inputFwd>0 ? 0.18 : 0), -1.1, 1.1);
   diver.rotation.x += (targetPitch - diver.rotation.x) * Math.min(1, dt*5);
 
-  // --- animation de nage (procédurale, sur le squelette généré)
+  // --- animation du plongeur
   const speed = vel.length();
-  const effort = Math.min(1, speed / 9);
-  swimPhase += dt * (2.0 + effort * 9.0);
-  if (modelReady) swimPose(bones, swimPhase, effort);
+  if (modelReady) {
+    animator.update(dt, {
+      speed,
+      inputFwd,
+      inputUp,
+      inputTurn,
+      turnInput: yawRate,
+      moving,
+      braking,
+      vy: vel.y,
+      lookPitch: pitch,
+      depth01: Math.min(1, Math.max(0, -diver.position.y) / 130),
+    });
+  }
 
   // --- caméra 3e personne
-  camOffset.copy(fwd).multiplyScalar(-5.2);
-  camOffset.y += 1.4;
-  camera.position.lerp(diver.position.clone().add(camOffset), Math.min(1, dt*6));
-  camera.lookAt(diver.position.x, diver.position.y + 0.5, diver.position.z);
+  // la caméra recule et le FOV s'ouvre avec la vitesse : sensation d'accélération
+  const spd01 = Math.min(1, speed / 12);
+  camDist  += ((5.0 + spd01 * 1.5) - camDist) * Math.min(1, dt * 2.5);
+  camHeight += ((1.35 + spd01 * 0.25) - camHeight) * Math.min(1, dt * 2.5);
+  camOffset.copy(fwd).multiplyScalar(-camDist);
+  camOffset.y += camHeight;
+  // léger décalage latéral dans les virages, pour dégager la vue
+  camOffset.addScaledVector(right, -THREE.MathUtils.clamp(yawRate * 0.55, -1.1, 1.1));
+  camera.position.lerp(diver.position.clone().add(camOffset), Math.min(1, dt*5.5));
+  camLook.lerp(diver.position.clone().setY(diver.position.y + 0.45), Math.min(1, dt*8));
+  camera.lookAt(camLook);
+  const targetFov = 70 + spd01 * 9;
+  if (Math.abs(camera.fov - targetFov) > 0.01) {
+    camera.fov += (targetFov - camera.fov) * Math.min(1, dt * 3);
+    camera.updateProjectionMatrix();
+  }
 
-  // --- lampe
-  const lampPos = diver.position.clone().add(new THREE.Vector3(0, 0.85, 0));
-  lamp.position.copy(lampPos);
-  lampTarget.position.copy(lampPos).addScaledVector(fwd, 20);
+  // --- lampe : ancrée sur le casque, elle bouge donc avec la tête animée
+  if (modelReady) {
+    attach.helmet.getWorldPosition(headPos);
+    attach.helmet.getWorldDirection(headDir);
+  } else {
+    headPos.copy(diver.position).add(new THREE.Vector3(0, 0.85, 0));
+    headDir.copy(fwd);
+  }
+  lamp.position.copy(headPos);
+  // le faisceau mixe l'orientation de la tête et la direction du regard
+  lampDir.copy(headDir).multiplyScalar(0.45).addScaledVector(fwd, 0.55).normalize();
+  lampTarget.position.copy(headPos).addScaledVector(lampDir, 20);
   const hasCharge = lampCharge > 0;
   lamp.intensity = (lampOn && hasCharge) ? 3.2 : 0;
   bulb.material.color.setHex((lampOn && hasCharge) ? 0xffeec2 : 0x33404a);
@@ -449,12 +520,12 @@ function animate() {
   // --- bulles
   bubTimer -= dt;
   if (bubTimer <= 0) {
-    bubTimer = moving ? 0.09 : 0.4;
+    bubTimer = 0.42 - Math.min(0.33, speed * 0.032);
     const bp = bubGeo.attributes.position;
     bp.setXYZ(bubIdx,
-      diver.position.x + (Math.random()-.5)*0.3,
-      diver.position.y + 0.8,
-      diver.position.z + (Math.random()-.5)*0.3);
+      headPos.x + (Math.random()-.5)*0.22,
+      headPos.y + 0.08,
+      headPos.z + (Math.random()-.5)*0.22);
     bubVel[bubIdx] = 1.5 + Math.random();
     bubIdx = (bubIdx + 1) % BUB;
     bp.needsUpdate = true;
@@ -476,6 +547,12 @@ function animate() {
   document.getElementById('o2fill').style.width = o2 + '%';
   document.getElementById('lamptxt').textContent = lampCharge.toFixed(0) + '%';
   document.getElementById('lampfill').style.width = lampCharge + '%';
+  if (modelReady && animator.state !== lastShownState) {
+    lastShownState = animator.state;
+    document.getElementById('animlbl').textContent = lastShownState;
+    document.querySelector('.anim .dot').style.background = STATE_COLORS[lastShownState] || '#3fe0d0';
+    document.querySelector('.anim .dot').style.boxShadow = '0 0 8px ' + (STATE_COLORS[lastShownState] || '#3fe0d0');
+  }
   document.getElementById('warn').style.opacity =
     (o2 < 25 && Math.sin(performance.now()*0.006) > 0) ? 1 : 0;
 
