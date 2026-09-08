@@ -1,0 +1,10 @@
+# Binaire du convertisseur FBX (13 Mo, réinstallable via tools/get-fbx2gltf.sh)
+tools/bin/
+
+# Dépendances Node utilisées seulement pour les tests hors navigateur
+node_modules/
+
+# FBX sources Mixamo (volumineux) : seuls les .glb convertis sont versionnes
+prototype/models/*.fbx
+
+prototype/models/*.fbm/
