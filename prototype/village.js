@@ -99,7 +99,9 @@ export function buildVillage(scene, opts = {}) {
 
   // ------------------------------------------------------- ROCHER PANORAMA
   // Le rocher où le personnage s'assied au plan 4, en surplomb de l'eau
-  const lookoutPos = new THREE.Vector3(-13.5, GROUND_Y + 0.9, 9.5);
+  // y = sommet du rocher, mesuré : c'est la surface d'assise. Le personnage
+  // est posé dessus par intro.js, qui abaisse lui-même le bassin.
+  const lookoutPos = new THREE.Vector3(-13.5, GROUND_Y + 1.149, 9.5);
   {
     const r = new THREE.Mesh(new THREE.DodecahedronGeometry(2.6, 0), MAT.rockDark);
     r.position.copy(lookoutPos).add(new THREE.Vector3(0, -1.5, 0));
@@ -515,17 +517,19 @@ export const Props = {
   /** Vieille montre à gousset. */
   watch() {
     const g = new THREE.Group();
-    const body = new THREE.Mesh(new THREE.CylinderGeometry(0.055, 0.055, 0.018, 16),
+    // Une montre de poche fait environ 4 cm : le boîtier ne doit pas dépasser
+    // 2 cm de rayon, sinon elle a la taille d'une assiette dans la main.
+    const body = new THREE.Mesh(new THREE.CylinderGeometry(0.021, 0.021, 0.007, 16),
                  new THREE.MeshStandardMaterial({ color: 0xb08d4f, roughness: 0.42, metalness: 0.8 }));
     body.rotation.x = Math.PI / 2;
     g.add(body);
-    const face = new THREE.Mesh(new THREE.CircleGeometry(0.045, 16),
+    const face = new THREE.Mesh(new THREE.CircleGeometry(0.017, 16),
                  new THREE.MeshStandardMaterial({ color: 0xe8e2d0, roughness: 0.5 }));
-    face.position.z = 0.010;
+    face.position.z = 0.004;
     g.add(face);
-    const ring = new THREE.Mesh(new THREE.TorusGeometry(0.016, 0.005, 6, 12),
+    const ring = new THREE.Mesh(new THREE.TorusGeometry(0.006, 0.002, 6, 12),
                  new THREE.MeshStandardMaterial({ color: 0xa08040, roughness: 0.4, metalness: 0.8 }));
-    ring.position.y = 0.066;
+    ring.position.y = 0.025;
     g.add(ring);
     return g;
   },

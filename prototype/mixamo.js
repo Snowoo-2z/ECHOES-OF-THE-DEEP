@@ -140,11 +140,17 @@ export function adoptMixamo(gltf) {
   const yMin = box.min.y, yMax = box.max.y;
 
   // --- Points d'ancrage (objets tenus en main, etc.) ------------------------
+  // Les offsets d'intro.js ont été écrits pour le rig maison, où l'axe -Y
+  // d'une main pointe vers les doigts. Sur Mixamo les doigts sont vers +Y :
+  // sans correction, les objets flottent derrière le poignet. On oriente donc
+  // chaque ancrage pour que la convention reste « -Y = vers les doigts ».
   const attach = {};
+  const FLIP = new THREE.Euler(Math.PI, 0, 0);
   for (const [key, name] of [['handL', 'handL'], ['handR', 'handR'],
                              ['head', 'head'], ['chest', 'chest']]) {
     const g = new THREE.Group();
     g.name = `attach_${key}`;
+    if (key === 'handL' || key === 'handR') g.rotation.copy(FLIP);
     if (bones[name]) bones[name].add(g);
     attach[key] = g;
   }

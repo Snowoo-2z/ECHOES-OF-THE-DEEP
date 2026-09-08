@@ -169,6 +169,7 @@ export async function loadCharacter(key) {
     height: cfg.height,
     scale: s,
     clips: rig.clips || [],
+    node,
     isMixamo: !!src.isMixamo,
     isPlaceholder: src.isPlaceholder,
     key,

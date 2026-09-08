@@ -362,7 +362,9 @@ export async function buildIntro(ctx) {
       cam.position.y += Math.sin(t * 1.9 + 0.7) * sh;
     },
     onEnter: () => {
-      // le héros est assis sur le rocher, face à l'océan
+      // Le héros est assis sur le rocher, face à l'océan. La pose « sit »
+      // abaisse le bassin d'elle-même en gardant les pieds au sol : on place
+      // donc la racine sur la surface d'assise, sans décalage supplémentaire.
       hero.root.position.copy(sitPos);
       hero.root.rotation.y = 2.55;
       hero.setAction('sit', 0.01);

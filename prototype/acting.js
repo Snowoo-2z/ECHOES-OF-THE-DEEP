@@ -313,7 +313,7 @@ const ACTIONS = {
   standOld:   { fn: poseStandOld,     fade: 0.5, rate: 1.0 },
   walk:       { fn: poseWalk,         fade: 0.3, rate: 1.0 },
   walkOld:    { fn: poseWalkOld,      fade: 0.4, rate: 1.0 },
-  sit:        { fn: poseSit,          fade: 0.6, rate: 1.0 },
+  sit:        { fn: poseSit,          fade: 0.6, rate: 1.0, anchor: 'hips' },
   crouchWork: { fn: poseCrouchWork,   fade: 0.5, rate: 1.0 },
   workStand:  { fn: poseWorkStanding, fade: 0.5, rate: 1.0 },
   carry:      { fn: poseCarry,        fade: 0.4, rate: 1.0 },
@@ -332,6 +332,9 @@ export class Actor {
     this.bones = char.bones;
     this.attach = char.attach;
     this.rest = char.rest || null;   // pose de repos (rig Mixamo)
+    this.node = char.node || null;   // noeud recalé verticalement
+    this._ref = {};                  // hauteurs de référence par ancrage
+    this._node0 = null;              // position de repos du nœud
     this.height = char.height;
 
     this.variation = opts.variation ?? Math.random();
@@ -367,6 +370,54 @@ export class Actor {
     this.action = name;
     this.fadeDur = fade ?? ACTIONS[name]?.fade ?? 0.4;
     this.blend = 0;
+  }
+
+  /**
+   * Recale verticalement le personnage selon la pose.
+   *
+   *  - par défaut on cale les PIEDS : les poses fléchies remontent les pieds
+   *    tout en laissant le bassin à hauteur debout, ce qui ferait flotter le
+   *    personnage jambes pendantes ;
+   *  - pour « sit » on cale le BASSIN au niveau de la racine, car celle-ci
+   *    désigne alors la surface d'assise, les pieds pendant en dessous.
+   *
+   * Le décalage est toujours calculé par rapport à la position de repos du
+   * nœud (this._node0), jamais par rapport à sa position courante, sinon la
+   * correction s'accumule d'une image à l'autre.
+   */
+  _groundFeet(anchor) {
+    const node = this.node;
+    if (!node) return;
+    const fl = this.bones.footL, fr = this.bones.footR, hp = this.bones.hips;
+    if (!fl || !fr || !hp) return;
+
+    if (this._node0 === null) this._node0 = node.position.y;
+
+    // On mesure à partir de la position de repos. La racine doit être remise
+    // à jour elle aussi : elle vient peut-être d'être déplacée par la mise en
+    // scène, et une matrice périmée fausserait complètement la hauteur.
+    node.position.y = this._node0;
+    this.root.updateMatrixWorld(true);
+
+    // hauteur de la racine dans le monde, pour raisonner en relatif
+    const rootY = _v3.setFromMatrixPosition(this.root.matrixWorld).y;
+
+    let cur;
+    if (anchor === 'hips') {
+      _v1.setFromMatrixPosition(hp.matrixWorld);
+      cur = _v1.y - rootY;
+    } else {
+      _v1.setFromMatrixPosition(fl.matrixWorld);
+      _v2.setFromMatrixPosition(fr.matrixWorld);
+      cur = Math.min(_v1.y, _v2.y) - rootY;
+    }
+
+    // hauteur de référence : pieds au sol, ou bassin sur l'assise
+    if (this._ref.feet === undefined && anchor !== 'hips') {
+      this._ref.feet = cur;
+    }
+    const want = anchor === 'hips' ? 0 : (this._ref.feet ?? cur);
+    node.position.y = this._node0 + (want - cur);
   }
 
   /** Pose personnalisée, prioritaire sur l'action (pour les gestes scriptés). */
@@ -461,10 +512,15 @@ export class Actor {
         bone.rotation.set(s[0], s[1], s[2]);
       }
     }
+
+    this._groundFeet(cfg.anchor || 'feet');
   }
 }
 
 const _q = new THREE.Quaternion();
+const _v1 = new THREE.Vector3();
+const _v2 = new THREE.Vector3();
+const _v3 = new THREE.Vector3();
 const _e = new THREE.Euler();
 
 export const ACTION_LIST = Object.keys(ACTIONS);
