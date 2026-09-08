@@ -1,0 +1,5 @@
+# Binaire du convertisseur FBX (13 Mo, réinstallable via tools/get-fbx2gltf.sh)
+tools/bin/
+
+# Dépendances Node utilisées seulement pour les tests hors navigateur
+node_modules/
