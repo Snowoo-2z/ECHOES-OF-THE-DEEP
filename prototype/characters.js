@@ -12,11 +12,13 @@
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { autoRig, BONE_NAMES, PROP } from './rig.js';
+import * as SkeletonUtils from 'three/addons/utils/SkeletonUtils.js';
+import { hasSkeleton, adoptMixamo } from './mixamo.js';
 
 // ---------------------------------------------------------------- CATALOGUE
 // height : taille réelle en mètres (le modèle est normalisé à cette valeur)
 export const CAST = {
-  player:      { file: 'player.glb',            height: 1.75, palette: { cloth: 0x5d6f7a, skin: 0xc99b74, accent: 0x8a5a3b } },
+  player:      { file: 'player_rigged.glb',            height: 1.75, palette: { cloth: 0x5d6f7a, skin: 0xc99b74, accent: 0x8a5a3b } },
   diver:       { file: 'diver.glb',             height: 1.85, palette: { cloth: 0xd9622b, skin: 0x9aa7b0, accent: 0x7fe6ff } },
   oldWoman:    { file: 'villager_woman_old.glb',height: 1.58, palette: { cloth: 0x6b6257, skin: 0xbe9273, accent: 0x8c7f6a } },
   oldMan:      { file: 'villager_man_old.glb',  height: 1.68, palette: { cloth: 0x5a5347, skin: 0xb8895f, accent: 0x6e5f4a } },
@@ -137,25 +139,37 @@ export async function loadCharacter(key) {
 
   // Chaque instance a sa propre géométrie (les poids de skinning sont
   // partagés mais le squelette doit être indépendant).
-  const geo = src.geometry.clone();
-  const mesh = new THREE.Mesh(geo, src.material);
-  const rig = autoRig(mesh);
+  let rig, node;
+  if (src.isMixamo) {
+    // Chaque acteur a besoin de son propre squelette : on clone la scène.
+    const scene = SkeletonUtils.clone(src.gltf.scene);
+    rig = adoptMixamo({ scene, animations: src.gltf.animations });
+    node = scene;
+  } else {
+    const geo = src.geometry.clone();
+    const mesh = new THREE.Mesh(geo, src.material);
+    rig = autoRig(mesh);
+    node = rig.skinned;
+  }
 
   const root = new THREE.Group();
   root.name = key;
   const s = cfg.height / rig.height;
-  rig.skinned.scale.setScalar(s);
+  node.scale.setScalar(s);
   // pieds posés sur y = 0
-  rig.skinned.position.y = -rig.yMin * s;
-  root.add(rig.skinned);
+  node.position.y = -rig.yMin * s;
+  root.add(node);
 
   return {
     root,
     skinned: rig.skinned,
     bones: rig.bones,
+    rest: rig.rest || null,
     attach: rig.attach,
     height: cfg.height,
     scale: s,
+    clips: rig.clips || [],
+    isMixamo: !!src.isMixamo,
     isPlaceholder: src.isPlaceholder,
     key,
   };
@@ -175,6 +189,11 @@ function fetchSource(key, cfg) {
     loader.load(
       `models/${cfg.file}`,
       (gltf) => {
+        // Modèle déjà riggé (Mixamo) : on garde son squelette et ses poids
+        // peints, bien meilleurs que ceux devinés par autoRig().
+        if (hasSkeleton(gltf)) {
+          return resolve({ gltf, isMixamo: true, isPlaceholder: false });
+        }
         let found = null;
         gltf.scene.traverse(o => { if (o.isMesh && !found) found = o; });
         if (!found) return fallback();

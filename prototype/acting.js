@@ -8,7 +8,9 @@
 //  { nomOs: [rx, ry, rz] }, appliqué sur le squelette généré par autoRig.
 //  Les bras partent d'une T-pose, donc rotation.z les rabat le long du corps.
 // ============================================================================
+import * as THREE from 'three';
 import { BONE_NAMES } from './rig.js';
+import { remapRotation } from './mixamo.js';
 
 const ARM_DOWN = 1.42;          // ramène un bras à la verticale depuis la T-pose
 const lerp = (a, b, t) => a + (b - a) * t;
@@ -129,15 +131,15 @@ export function poseSit(p, t, v = 0) {
   // Flexions volontairement modérées : au-delà d'environ 60° le skinning
   // linéaire pince la maille à la hanche et au genou. On compense en
   // inclinant le bassin, ce qui donne la même lecture visuelle.
-  p.hips[0]   =  0.16;        // très léger buste en avant (>0 = vers l'avant)
-  p.thighL[0] = -0.62;        // cuisses relevées vers l'avant
-  p.thighR[0] = -0.58;
+  p.hips[0]   =  0.10;        // buste presque droit (>0 = vers l'avant)
+  p.thighL[0] = -1.45;        // cuisses à l'horizontale, vers l'avant
+  p.thighR[0] = -1.40;
   p.thighL[2] =  0.08;
   p.thighR[2] = -0.08;
-  p.kneeL[0]  = 0.92 + b * 0.03;      // jambes qui pendent, légère oscillation
-  p.kneeR[0]  = 0.88 - b * 0.03;
-  p.footL[0]  = 0.20;
-  p.footR[0]  = 0.18;
+  p.kneeL[0]  = 1.42 + b * 0.03;      // tibias verticaux, légère oscillation
+  p.kneeR[0]  = 1.38 - b * 0.03;
+  p.footL[0]  = 0.10;
+  p.footR[0]  = 0.08;
 
   p.spine[0] = 0.10 + b * 0.02;
   p.chest[0] = 0.04;
@@ -161,15 +163,15 @@ export function poseCrouchWork(p, t, v = 0) {
   const w2 = Math.sin(t * 1.4 + v * 2.2);
 
   // Même contrainte que poseSit : on reste sous ~60° par articulation.
-  p.hips[0]   =  0.22;        // accroupi, buste penché en avant
-  p.thighL[0] = -0.58;
-  p.thighR[0] = -0.54;
-  p.thighL[2] =  0.20;
-  p.thighR[2] = -0.20;
-  p.kneeL[0]  = 1.02;
-  p.kneeR[0]  = 0.98;
-  p.footL[0]  = 0.30;
-  p.footR[0]  = 0.26;
+  p.hips[0]   =  0.30;        // accroupi, buste penché en avant
+  p.thighL[0] = -1.55;
+  p.thighR[0] = -1.50;
+  p.thighL[2] =  0.24;
+  p.thighR[2] = -0.24;
+  p.kneeL[0]  = 1.85;
+  p.kneeR[0]  = 1.80;
+  p.footL[0]  = 0.45;
+  p.footR[0]  = 0.42;
 
   p.spine[0] = 0.26;
   p.chest[0] = 0.14;
@@ -329,6 +331,7 @@ export class Actor {
     this.root = char.root;
     this.bones = char.bones;
     this.attach = char.attach;
+    this.rest = char.rest || null;   // pose de repos (rig Mixamo)
     this.height = char.height;
 
     this.variation = opts.variation ?? Math.random();
@@ -445,9 +448,23 @@ export class Actor {
         if (d < -maxStep) d = -maxStep;
         s[c] += d;
       }
-      if (this.bones[n]) this.bones[n].rotation.set(s[0], s[1], s[2]);
+      const bone = this.bones[n];
+      if (!bone) continue;
+      if (this.rest) {
+        // Rig Mixamo : les os ont une rotation de repos non nulle et leurs
+        // axes locaux diffèrent du squelette maison. On convertit les axes,
+        // puis on compose par-dessus la pose de repos au lieu de l'écraser.
+        const m = remapRotation(n, s);
+        _q.setFromEuler(_e.set(m[0], m[1], m[2]));
+        bone.quaternion.copy(this.rest[n]).multiply(_q);
+      } else {
+        bone.rotation.set(s[0], s[1], s[2]);
+      }
     }
   }
 }
+
+const _q = new THREE.Quaternion();
+const _e = new THREE.Euler();
 
 export const ACTION_LIST = Object.keys(ACTIONS);
